@@ -15,28 +15,27 @@ Modelo C4 de la arquitectura de FrogPay (MVP): **Monolito Modular Orientado a Ev
 ## Nivel 1 — Diagrama de Contexto
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"nodeSpacing": 70, "rankSpacing": 110, "padding": 20}}}%%
 flowchart TB
-    admin["<b>Platform Admin</b><br/>[Persona]<br/>Personal de FrogPay que da de alta a los comercios"]
-    owner["<b>Owner del comercio</b><br/>[Persona]<br/>Responsable del tenant: gestiona credenciales, plan y ventas"]
-    cliente["<b>Cliente final</b><br/>[Persona]<br/>Compra en el comercio y paga con tarjeta o QR/billetera"]
+    cliente["<b>Cliente final</b><br/>[Persona]<br/>Compra y paga"]
+    admin["<b>Platform Admin</b><br/>[Persona]<br/>Personal de FrogPay"]
+    owner["<b>Owner del comercio</b><br/>[Persona]<br/>Responsable del tenant"]
 
-    frogpay["<b>FrogPay</b><br/>[Sistema de software]<br/>Pasarela de pago universal SaaS multi-tenant: crea y procesa pagos, notifica cambios de estado y ofrece un dashboard"]
+    frogpay["<b>FrogPay</b><br/>[Sistema de software]<br/>Pasarela de pago<br/>SaaS multi-tenant"]
 
-    comercio["<b>Sistema del comercio</b><br/>[Sistema externo]<br/>E-commerce o app del tenant integrada vía API REST"]
-    stripe["<b>Stripe - sandbox</b><br/>[Sistema externo]<br/>Procesador de tarjetas; tokeniza PAN/CVV"]
-    qr["<b>Red QR interoperable / Billetera</b><br/>[Sistema externo]<br/>Cobros QR estándar BCB - EMVCo vía EIF aliada"]
-    email["<b>Proveedor de email</b><br/>[Sistema externo]<br/>Correos transaccionales"]
+    comercio["<b>Sistema del comercio</b><br/>[Sistema externo]<br/>E-commerce del tenant"]
+    stripe["<b>Stripe</b><br/>[Sistema externo]<br/>Pagos con tarjeta"]
+    qr["<b>Red QR / Billetera</b><br/>[Sistema externo]<br/>QR interoperable BCB"]
+    email["<b>Email</b><br/>[Sistema externo]<br/>Correos transaccionales"]
 
-    admin -->|"Da de alta tenants<br/>[HTTPS]"| frogpay
-    owner -->|"Gestiona API Keys, plan y ve transacciones<br/>[HTTPS]"| frogpay
+    admin -->|"Da de alta tenants"| frogpay
+    owner -->|"Gestiona su cuenta"| frogpay
     cliente -->|"Compra"| comercio
-    cliente -.->|"Ingresa su tarjeta en iframe/SDK certificado"| stripe
-    comercio -->|"Crea y consulta pagos<br/>[REST + API Key + Idempotency-Key]"| frogpay
-    frogpay -->|"Webhooks firmados<br/>[HTTPS + HMAC]"| comercio
-    frogpay -->|"Autoriza y captura pagos<br/>[REST, TLS 1.2+]"| stripe
-    frogpay -->|"Genera y confirma cobros QR<br/>[REST, mTLS]"| qr
-    frogpay -->|"Envía invitaciones<br/>[SMTP/API]"| email
-    email -.->|"Correo de invitación"| owner
+    cliente -.->|"Ingresa tarjeta"| stripe
+    frogpay <-->|"API REST / Webhooks"| comercio
+    frogpay -->|"Cobra tarjetas"| stripe
+    frogpay -->|"Cobra por QR"| qr
+    frogpay -->|"Envía invitaciones"| email
 
     classDef person fill:#08427b,stroke:#052e56,color:#fff
     classDef system fill:#1168bd,stroke:#0b4884,color:#fff
@@ -56,37 +55,38 @@ flowchart TB
 ## Nivel 2 — Diagrama de Contenedores
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"nodeSpacing": 70, "rankSpacing": 100, "padding": 20}}}%%
 flowchart TB
     admin["<b>Platform Admin</b><br/>[Persona]"]
     owner["<b>Owner del comercio</b><br/>[Persona]"]
     comercio["<b>Sistema del comercio</b><br/>[Sistema externo]"]
 
-    subgraph frogpay["FrogPay - Sistema de software"]
+    subgraph frogpay["FrogPay"]
         direction TB
-        dashboard["<b>Dashboard Web</b><br/>[Contenedor: Next.js + TypeScript]<br/>Landing page, dashboard del tenant y dashboard interno"]
-        gateway["<b>API Gateway</b><br/>[Contenedor: Kong / NGINX]<br/>Terminación TLS y rate limiting por tenant"]
-        api["<b>API FrogPay</b><br/>[Contenedor: NestJS - monolito modular]<br/>Lógica de negocio, API REST y consumidores de eventos"]
-        bus["<b>Bus de eventos</b><br/>[Contenedor: RabbitMQ]<br/>Eventos de dominio, reintentos y Dead-Letter Queue"]
-        redis[("<b>Caché</b><br/>[Contenedor: Redis]<br/>Idempotency-Keys, contadores de límites y caché")]
-        db[("<b>Base de datos</b><br/>[Contenedor: PostgreSQL en Supabase]<br/>Tenants, pagos y auditoría append-only; RLS por tenant_id")]
+        dashboard["<b>Dashboard Web</b><br/>[Next.js]<br/>Landing y dashboards"]
+        gateway["<b>API Gateway</b><br/>[Kong / NGINX]<br/>TLS y rate limiting"]
+        api["<b>API FrogPay</b><br/>[NestJS]<br/>Monolito modular"]
+        bus["<b>Bus de eventos</b><br/>[RabbitMQ]<br/>Reintentos y DLQ"]
+        redis[("<b>Caché</b><br/>[Redis]<br/>Idempotencia")]
+        db[("<b>Base de datos</b><br/>[PostgreSQL · Supabase]<br/>RLS por tenant_id")]
     end
 
-    stripe["<b>Stripe - sandbox</b><br/>[Sistema externo]"]
+    stripe["<b>Stripe</b><br/>[Sistema externo]"]
     qr["<b>Red QR / Billetera</b><br/>[Sistema externo]"]
-    email["<b>Proveedor de email</b><br/>[Sistema externo]"]
+    email["<b>Email</b><br/>[Sistema externo]"]
 
-    admin -->|"Usa<br/>[HTTPS]"| dashboard
-    owner -->|"Usa<br/>[HTTPS]"| dashboard
-    dashboard -->|"Llama a la API<br/>[JSON/HTTPS + JWT]"| gateway
-    comercio -->|"Crea y consulta pagos<br/>[REST + API Key]"| gateway
-    gateway -->|"Enruta<br/>[HTTP]"| api
-    api -->|"Lee y escribe<br/>[Prisma, pooler TLS]"| db
-    api -->|"Idempotencia y límites"| redis
-    api <-->|"Publica y consume eventos<br/>[AMQP]"| bus
-    api -->|"Webhooks firmados<br/>[HTTPS + HMAC]"| comercio
-    api -->|"Autoriza pagos<br/>[REST]"| stripe
-    api -->|"Cobros QR<br/>[REST, mTLS]"| qr
-    api -->|"Correos<br/>[SMTP/API]"| email
+    admin -->|"Usa"| dashboard
+    owner -->|"Usa"| dashboard
+    dashboard -->|"JSON + JWT"| gateway
+    comercio -->|"REST + API Key"| gateway
+    gateway -->|"Enruta"| api
+    api -->|"Prisma"| db
+    api -->|"Claves"| redis
+    api <-->|"AMQP"| bus
+    api -->|"Webhooks HMAC"| comercio
+    api -->|"REST"| stripe
+    api -->|"mTLS"| qr
+    api -->|"SMTP"| email
 
     classDef person fill:#08427b,stroke:#052e56,color:#fff
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
@@ -109,31 +109,32 @@ flowchart TB
 ## Nivel 3 — Diagrama de Componentes (API FrogPay)
 
 ```mermaid
+%%{init: {"themeVariables": {"fontSize": "18px"}, "flowchart": {"nodeSpacing": 60, "rankSpacing": 90, "padding": 20}}}%%
 flowchart TB
     gateway["<b>API Gateway</b><br/>[Contenedor]"]
 
-    subgraph apicont["API FrogPay - Contenedor NestJS"]
+    subgraph apicont["API FrogPay · NestJS"]
         direction TB
-        controllers["<b>Controladores REST / BFF</b><br/>[presentation/http]<br/>Endpoints públicos /v1 y endpoints del dashboard"]
-        auth["<b>Auth y Contexto de Tenant</b><br/>[shared/auth]<br/>Guards JWT, API Key y Roles; obtiene el tenant_id"]
-        identity["<b>Identidad y Tenants</b><br/>[modules/identity]<br/>Alta de tenants, invitaciones, usuarios y API Keys"]
-        plans["<b>Planes</b><br/>[modules/plans]<br/>Free / Premium y límites de uso"]
-        payments["<b>Pagos - Core</b><br/>[modules/payments]<br/>Ciclo de vida del pago e idempotencia"]
-        adapters["<b>Adaptadores de Proveedores</b><br/>[modules/provider-adapters]<br/>PaymentProviderPort + Stripe / QR BCB; circuit breaker y timeout 3 s"]
-        webhooks["<b>Webhooks</b><br/>[modules/webhooks]<br/>Firma HMAC, backoff exponencial y DLQ"]
-        notifications["<b>Notificaciones</b><br/>[modules/notifications]<br/>Correos de invitación"]
-        audit["<b>Auditoría y Métricas</b><br/>[modules/audit]<br/>Registro inmutable y métricas del dashboard"]
-        health["<b>Health</b><br/>[modules/health]<br/>Estado de BD, bus y caché"]
-        eventbus["<b>EventBus</b><br/>[shared/events]<br/>Publica y suscribe eventos de dominio"]
-        prisma["<b>PrismaService</b><br/>[shared/database]<br/>Acceso a datos; fija el tenant para RLS"]
+        controllers["<b>Controladores REST</b><br/>[presentation/http]"]
+        auth["<b>Auth y Tenant</b><br/>[shared/auth]"]
+        identity["<b>Identidad y Tenants</b><br/>[modules/identity]"]
+        plans["<b>Planes</b><br/>[modules/plans]"]
+        payments["<b>Pagos · Core</b><br/>[modules/payments]"]
+        adapters["<b>Adaptadores</b><br/>[provider-adapters]"]
+        eventbus["<b>EventBus</b><br/>[shared/events]"]
+        notifications["<b>Notificaciones</b><br/>[modules/notifications]"]
+        webhooks["<b>Webhooks</b><br/>[modules/webhooks]"]
+        audit["<b>Auditoría</b><br/>[modules/audit]"]
+        health["<b>Health</b><br/>[modules/health]"]
+        prisma["<b>PrismaService</b><br/>[shared/database]"]
     end
 
     db[("<b>PostgreSQL</b><br/>[Supabase]")]
-    bus["<b>RabbitMQ</b><br/>[Contenedor]"]
-    redis[("<b>Redis</b><br/>[Contenedor]")]
+    bus["<b>RabbitMQ</b>"]
+    redis[("<b>Redis</b>")]
     stripe["<b>Stripe</b><br/>[Sistema externo]"]
-    qr["<b>Red QR / Billetera</b><br/>[Sistema externo]"]
-    email["<b>Proveedor de email</b><br/>[Sistema externo]"]
+    qr["<b>Red QR</b>"]
+    email["<b>Email</b>"]
     comercio["<b>Sistema del comercio</b><br/>[Sistema externo]"]
 
     gateway --> controllers
@@ -143,21 +144,21 @@ flowchart TB
     controllers --> payments
     controllers --> health
 
-    payments -->|"Consulta límite restante"| plans
+    payments -->|"Límite restante"| plans
     payments -->|"Idempotency-Key"| redis
-    payments -->|"Cobra vía puerto común"| adapters
+    payments -->|"Puerto común"| adapters
     adapters --> stripe
     adapters --> qr
 
-    identity -->|"Publica tenant.creado"| eventbus
-    payments -->|"Publica pago.creado / aprobado / rechazado"| eventbus
+    identity -->|"tenant.creado"| eventbus
+    payments -->|"pago.*"| eventbus
     eventbus <-->|"AMQP"| bus
-    eventbus -->|"tenant.creado"| notifications
-    eventbus -->|"pago.*"| webhooks
-    eventbus -->|"Todos los eventos"| audit
+    eventbus --> notifications
+    eventbus --> webhooks
+    eventbus --> audit
 
     notifications --> email
-    webhooks -->|"HTTPS + HMAC"| comercio
+    webhooks -->|"HMAC"| comercio
 
     identity --> prisma
     plans --> prisma
