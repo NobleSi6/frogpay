@@ -1,0 +1,41 @@
+# FrogPay
+
+Pasarela de pago universal SaaS multi-tenant (Freemium). Monorepo con npm workspaces.
+Arquitectura: **Monolito Modular Orientado a Eventos (EDA)**, con camino de evolución a microservicios.
+
+## Estructura general
+
+```
+frogpay/
+├── apps/
+│   ├── api/              # Backend NestJS — ver apps/api/README.md
+│   └── dashboard/        # Frontend Next.js — ver apps/dashboard/README.md
+├── packages/
+│   └── contracts/        # Tipos compartidos front/back: contratos de eventos y DTOs públicos
+├── docs/
+│   ├── c4/               # Diagramas C4 nivel 1, 2 y 3 (TSK-ARQ-102)
+│   ├── adr/              # Architecture Decision Records (TSK-ARQ-103)
+│   └── erd/              # Modelo E-R exportado de Vertabelo (TSK-ARQ/DEVs-100)
+├── infra/
+│   └── rabbitmq/         # definitions.json: exchanges, colas y DLQ precreadas
+├── .github/
+│   └── workflows/        # CI: lint, tests y build en cada PR
+├── docker-compose.yml    # API, dashboard, Redis y RabbitMQ (PostgreSQL vive en Supabase)
+├── .env.example          # Variables requeridas SIN valores reales (RNF-15)
+└── package.json          # Definición de workspaces y scripts globales
+```
+
+| Carpeta | Para qué sirve exactamente |
+|---|---|
+| `apps/api` | Toda la lógica de negocio, la API REST y los consumidores de eventos. |
+| `apps/dashboard` | Landing page, dashboard del tenant y dashboard interno de FrogPay. |
+| `packages/contracts` | Única fuente de verdad de las interfaces que comparten front y back (p. ej. `TenantDto`, payload de `tenant.creado`). Evita duplicar tipos. |
+| `docs/` | Documentación de arquitectura versionada junto al código. |
+| `infra/` | Configuración de infraestructura que no es código de la aplicación. |
+| `.github/` | Automatización del repositorio (CI y plantillas). |
+
+## Reglas globales
+
+1. **Ningún secreto en el código.** Todo va en `.env` (ignorado por git). Solo `.env.example` se versiona.
+2. Los tipos compartidos entre front y back se definen **solo** en `packages/contracts`.
+3. Toda decisión arquitectónica relevante se registra como ADR en `docs/adr/`.
