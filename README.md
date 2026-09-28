@@ -39,3 +39,7 @@ frogpay/
 1. **Ningún secreto en el código.** Todo va en `.env` (ignorado por git). Solo `.env.example` se versiona.
 2. Los tipos compartidos entre front y back se definen **solo** en `packages/contracts`.
 3. Toda decisión arquitectónica relevante se registra como ADR en `docs/adr/`.
+
+## Documentación de arquitectura
+- [Diagramas C4 (Contexto, Contenedores y Componentes)](docs/c4/README.md)
+- [Decisiones de arquitectura (ADRs)](docs/adr/)
