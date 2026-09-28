@@ -13,7 +13,6 @@ export interface TenantCreatedEventPayload {
     email: string;
     role: string;
     status: string;
-    invitationToken: string;
     invitationExpiresAt: Date;
   };
   apiKeys: Array<{

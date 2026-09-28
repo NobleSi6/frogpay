@@ -14,6 +14,7 @@ describe('CreateTenantUseCase', () => {
   let userRepo: jest.Mocked<IUserRepository>;
   let apiKeyRepo: jest.Mocked<IApiKeyRepository>;
   let eventBus: jest.Mocked<IEventBus>;
+  let emailSender: { sendInvitation: jest.Mock };
 
   const validDto: CreateTenantDto = {
     name: 'Acme Bolivia S.R.L.',
@@ -35,7 +36,7 @@ describe('CreateTenantUseCase', () => {
     userRepo = {
       findById: jest.fn().mockResolvedValue(null),
       findByEmail: jest.fn().mockResolvedValue(null),
-      findByInvitationToken: jest.fn().mockResolvedValue(null),
+      findByInvitationTokenHash: jest.fn().mockResolvedValue(null),
       save: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -53,7 +54,9 @@ describe('CreateTenantUseCase', () => {
       subscribe: jest.fn(),
     };
 
-    useCase = new CreateTenantUseCase(tenantRepo, userRepo, apiKeyRepo, eventBus);
+    emailSender = { sendInvitation: jest.fn().mockResolvedValue(undefined) };
+
+    useCase = new CreateTenantUseCase(tenantRepo, userRepo, apiKeyRepo, eventBus, emailSender);
   });
 
   it('debe registrar un tenant exitosamente con su owner invitado, API Keys y evento de dominio', async () => {
@@ -73,8 +76,12 @@ describe('CreateTenantUseCase', () => {
     expect(result.owner.email).toBe(validDto.contactEmail);
     expect(result.owner.role).toBe('OWNER');
     expect(result.owner.status).toBe('invited');
-    expect(result.owner.invitationToken).toBeDefined();
-    expect(result.owner.invitationToken.length).toBeGreaterThan(20);
+    expect(result.invitationSent).toBe(true);
+    expect(emailSender.sendInvitation).toHaveBeenCalledTimes(1);
+    const invitationEmail = emailSender.sendInvitation.mock.calls[0][0];
+    expect(invitationEmail.to).toBe(validDto.contactEmail);
+    expect(invitationEmail.invitationUrl).toContain('token=');
+    expect(JSON.stringify(result)).not.toContain(new URL(invitationEmail.invitationUrl).searchParams.get('token'));
 
     // Verificaciones de API Keys
     expect(result.apiKeys).toHaveLength(2);

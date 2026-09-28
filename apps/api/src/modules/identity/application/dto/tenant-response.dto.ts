@@ -54,12 +54,6 @@ export class OwnerInvitationDto {
   status: string;
 
   @ApiProperty({
-    description: 'Token criptográfico de invitación (HU-01B)',
-    example: '7a8f9c0b1e2d4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a',
-  })
-  invitationToken: string;
-
-  @ApiProperty({
     description: 'Fecha límite de expiración de la invitación (72 horas)',
     example: '2026-10-01T15:00:00.000Z',
   })
@@ -120,6 +114,9 @@ export class TenantResponseDto {
     type: OwnerInvitationDto,
   })
   owner: OwnerInvitationDto;
+
+  @ApiProperty({ description: 'Confirma que se envió el correo de invitación', example: true })
+  invitationSent: boolean;
 
   @ApiProperty({
     description: 'Llaves de API iniciales generadas (Test y Live)',

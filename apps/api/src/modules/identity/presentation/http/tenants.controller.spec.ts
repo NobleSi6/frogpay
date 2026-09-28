@@ -22,9 +22,9 @@ describe('TenantsController', () => {
       email: 'contacto@ganadero.com.bo',
       role: 'OWNER',
       status: 'invited',
-      invitationToken: 'token-abc-123',
       invitationExpiresAt: new Date(Date.now() + 72 * 3600 * 1000),
     },
+    invitationSent: true,
     apiKeys: [
       {
         type: 'test',

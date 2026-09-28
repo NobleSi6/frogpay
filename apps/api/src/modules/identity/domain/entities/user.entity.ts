@@ -17,7 +17,7 @@ export interface UserProps {
   name?: string;
   role: UserRole;
   status: UserStatus;
-  invitationToken?: string;
+  invitationTokenHash?: string;
   invitationExpiresAt?: Date;
   passwordHash?: string;
 }
@@ -47,8 +47,8 @@ export class User extends Entity<UserProps> {
     return this.props.status;
   }
 
-  get invitationToken(): string | undefined {
-    return this.props.invitationToken;
+  get invitationTokenHash(): string | undefined {
+    return this.props.invitationTokenHash;
   }
 
   get invitationExpiresAt(): Date | undefined {
@@ -66,7 +66,7 @@ export class User extends Entity<UserProps> {
     this.props.status = 'active';
     this.props.passwordHash = passwordHash;
     if (name) this.props.name = name;
-    this.props.invitationToken = undefined;
+    this.props.invitationTokenHash = undefined;
     this.props.invitationExpiresAt = undefined;
     this._updatedAt = new Date();
   }
@@ -77,7 +77,7 @@ export class User extends Entity<UserProps> {
   }
 
   public isInvitationValid(): boolean {
-    if (this.props.status !== 'invited' || !this.props.invitationToken) {
+    if (this.props.status !== 'invited' || !this.props.invitationTokenHash) {
       return false;
     }
     if (!this.props.invitationExpiresAt) {
@@ -89,7 +89,7 @@ export class User extends Entity<UserProps> {
   public static createInvitedOwner(
     tenantId: string,
     email: string,
-    invitationToken: string,
+    invitationTokenHash: string,
     expiresInHours = 72,
     id?: string,
   ): User {
@@ -103,7 +103,7 @@ export class User extends Entity<UserProps> {
         email: emailVo,
         role: 'OWNER',
         status: 'invited',
-        invitationToken,
+        invitationTokenHash,
         invitationExpiresAt: expiresAt,
       },
       id,
@@ -117,7 +117,7 @@ export class User extends Entity<UserProps> {
       name?: string;
       role: UserRole;
       status: UserStatus;
-      invitationToken?: string;
+      invitationTokenHash?: string;
       invitationExpiresAt?: Date;
       passwordHash?: string;
     },
@@ -132,7 +132,7 @@ export class User extends Entity<UserProps> {
         name: props.name,
         role: props.role,
         status: props.status,
-        invitationToken: props.invitationToken,
+        invitationTokenHash: props.invitationTokenHash,
         invitationExpiresAt: props.invitationExpiresAt,
         passwordHash: props.passwordHash,
       },

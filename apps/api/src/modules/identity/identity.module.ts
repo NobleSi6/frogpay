@@ -9,11 +9,18 @@ import { API_KEY_REPOSITORY } from './domain/repositories/api-key.repository.int
 import { InMemoryApiKeyRepository } from './infrastructure/persistence/in-memory-api-key.repository';
 import { EVENT_BUS } from '../../shared/events/event-bus.interface';
 import { InMemoryEventBus } from '../../shared/events/in-memory-event-bus';
+import { IdentityController } from './presentation/http/identity.controller';
+import { ActivateInvitationUseCase } from './application/use-cases/activate-invitation.use-case';
+import { EMAIL_SENDER } from '../../shared/email/email-sender.interface';
+import { ResendEmailSender } from '../../shared/email/resend-email-sender.service';
 
 @Module({
-  controllers: [TenantsController],
+  controllers: [TenantsController, IdentityController],
   providers: [
     CreateTenantUseCase,
+    ActivateInvitationUseCase,
+    ResendEmailSender,
+    { provide: EMAIL_SENDER, useExisting: ResendEmailSender },
     {
       provide: TENANT_REPOSITORY,
       useClass: InMemoryTenantRepository,

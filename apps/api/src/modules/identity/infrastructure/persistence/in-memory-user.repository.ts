@@ -25,9 +25,9 @@ export class InMemoryUserRepository implements IUserRepository {
     return null;
   }
 
-  async findByInvitationToken(token: string): Promise<User | null> {
+  async findByInvitationTokenHash(tokenHash: string): Promise<User | null> {
     for (const user of this.items.values()) {
-      if (user.invitationToken === token) {
+      if (user.invitationTokenHash === tokenHash) {
         return user;
       }
     }

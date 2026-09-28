@@ -24,6 +24,7 @@ import { User } from '../../domain/entities/user.entity';
 import { ApiKey } from '../../domain/entities/api-key.entity';
 import { CryptoUtil } from '../../../../shared/utils/crypto.util';
 import { TenantCreatedEvent } from '../../domain/events/tenant-created.event';
+import { EMAIL_SENDER, EmailSender } from '../../../../shared/email/email-sender.interface';
 
 @Injectable()
 export class CreateTenantUseCase {
@@ -38,6 +39,8 @@ export class CreateTenantUseCase {
     private readonly apiKeyRepository: IApiKeyRepository,
     @Inject(EVENT_BUS)
     private readonly eventBus: IEventBus,
+    @Inject(EMAIL_SENDER)
+    private readonly emailSender: EmailSender,
   ) {}
 
   async execute(dto: CreateTenantDto): Promise<TenantResponseDto> {
@@ -79,7 +82,12 @@ export class CreateTenantUseCase {
 
     // 5. Creación del Usuario Propietario (HU-01B: Estado 'invited' con Token criptográfico de 72h)
     const invitationToken = CryptoUtil.generateSecureToken(32);
-    const ownerUser = User.createInvitedOwner(tenant.id, dto.contactEmail, invitationToken, 72);
+    const ownerUser = User.createInvitedOwner(
+      tenant.id,
+      dto.contactEmail,
+      CryptoUtil.hashString(invitationToken),
+      72,
+    );
 
     // 6. Generación de API Keys iniciales (Test y Live con hashing SHA-256)
     const testKeyGen = CryptoUtil.generateApiKey('test');
@@ -121,7 +129,6 @@ export class CreateTenantUseCase {
         email: ownerUser.email.value,
         role: ownerUser.role,
         status: ownerUser.status,
-        invitationToken: ownerUser.invitationToken!,
         invitationExpiresAt: ownerUser.invitationExpiresAt!,
       },
       apiKeys: [
@@ -138,6 +145,17 @@ export class CreateTenantUseCase {
           maskedKey: liveApiKey.maskedKey,
         },
       ],
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const invitationUrl = new URL('/activate', frontendUrl);
+    invitationUrl.searchParams.set('email', ownerUser.email.value);
+    invitationUrl.searchParams.set('token', invitationToken);
+    await this.emailSender.sendInvitation({
+      to: ownerUser.email.value,
+      tenantName: tenant.name,
+      invitationUrl: invitationUrl.toString(),
+      expiresAt: ownerUser.invitationExpiresAt!,
     });
 
     await this.eventBus.publish(domainEvent);
@@ -158,9 +176,9 @@ export class CreateTenantUseCase {
         email: ownerUser.email.value,
         role: ownerUser.role,
         status: ownerUser.status,
-        invitationToken: ownerUser.invitationToken!,
         invitationExpiresAt: ownerUser.invitationExpiresAt!,
       },
+      invitationSent: true,
       apiKeys: [
         {
           type: 'test',
