@@ -5,6 +5,10 @@ import configuration from './config/configuration';
 import { IdentityModule } from './modules/identity/identity.module';
 import { HealthModule } from './modules/health/health.module';
 import { RolesGuard } from './shared/auth/roles.guard';
+import { EventBusModule } from './shared/events/event-bus.module';
+import { EventBusSmokePublisher } from './shared/events/event-bus-smoke-publisher';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { ProviderAdaptersModule } from './modules/provider-adapters/provider-adapters.module';
 
 @Module({
   imports: [
@@ -12,10 +16,14 @@ import { RolesGuard } from './shared/auth/roles.guard';
       isGlobal: true,
       load: [configuration],
     }),
+    EventBusModule,
     IdentityModule,
     HealthModule,
+    PaymentsModule,
+    ProviderAdaptersModule,
   ],
   providers: [
+    EventBusSmokePublisher,
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

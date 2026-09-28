@@ -8,6 +8,7 @@ export const EventCatalog = {
   USUARIO_INVITADO: 'usuario.invitado',
   USUARIO_ACTIVADO: 'usuario.activado',
   APIKEY_GENERADA: 'apikey.generada',
+  ARQUITECTURA_PRUEBA: 'arquitectura.prueba',
 
   // Dominio: Pagos
   PAGO_CREADO: 'pago.creado',

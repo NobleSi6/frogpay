@@ -13,11 +13,11 @@ export class EventBusHealthIndicator {
     private readonly eventBus: IEventBus,
   ) {}
 
-  check(): EventBusHealthStatus {
-    const isRabbit = !!process.env.RABBITMQ_URL;
+  async check(): Promise<EventBusHealthStatus> {
+    const healthy = await this.eventBus.checkHealth?.() ?? false;
     return {
-      status: this.eventBus ? 'up' : 'down',
-      provider: isRabbit ? 'rabbitmq' : 'in-memory',
+      status: healthy ? 'up' : 'down',
+      provider: this.eventBus.provider ?? 'in-memory',
     };
   }
 }

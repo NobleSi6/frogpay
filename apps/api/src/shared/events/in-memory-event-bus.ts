@@ -5,11 +5,16 @@ import { EventHandler, IEventBus } from './event-bus.interface';
 
 @Injectable()
 export class InMemoryEventBus implements IEventBus {
+  readonly provider = 'in-memory' as const;
   private readonly emitter = new EventEmitter();
   private readonly logger = new Logger(InMemoryEventBus.name);
 
   constructor() {
     this.emitter.setMaxListeners(50);
+  }
+
+  async checkHealth(): Promise<boolean> {
+    return true;
   }
 
   async publish<T>(event: DomainEvent<T>): Promise<void> {

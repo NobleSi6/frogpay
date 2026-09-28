@@ -90,6 +90,24 @@ El endpoint de creación informa un error si el proveedor no está configurado o
 rechaza el mensaje; el tenant y el owner ya se habrán persistido, por lo que se
 debe revisar/reintentar el envío antes de registrar nuevamente ese correo.
 
+### Bus RabbitMQ (TSK-ARQ/BACK1-104)
+
+Desde la raíz del repositorio, configura `RABBITMQ_USER` y `RABBITMQ_PASS` en
+`.env` (usa `.env.example` como referencia) e inicia el broker con
+`docker compose up -d rabbitmq`. La interfaz de administración está disponible
+en `http://localhost:15672`; el puerto AMQP local es `5672`. Copia esas
+credenciales a `apps/api/.env` para ejecutar la API desde el host; por defecto,
+la API construye la URL local con esas credenciales. En otros entornos puedes
+definir explícitamente `RABBITMQ_URL`.
+
+El bus usa el exchange durable `frogpay.events` (topic), mensajes persistentes,
+confirmación del broker y una DLQ por cada cola consumidora. Tenants, Pagos y
+Adapters tienen colas independientes. Al iniciar la API en `development` se
+publica `arquitectura.prueba`; queda disponible en `frogpay.events.smoke` y los
+tres esqueletos registran su consumo en los logs. `/health` consulta la conexión
+real con RabbitMQ. En producción, configura `RABBITMQ_URL` con el hostname
+interno del broker y no expongas el puerto de administración públicamente.
+
 1. **Regla de dependencia:** `presentation → application → domain`. `domain/` nunca importa NestJS, Prisma ni nada de `infrastructure/`.
 2. **Los módulos no se importan entre sí por dentro.** Se comunican por **eventos** del bus. La única excepción son consultas síncronas imprescindibles (p. ej. "límite restante del plan"), que se hacen a través de un servicio que el módulo **exporta explícitamente**.
 3. **El `tenant_id` nunca viene del body.** Siempre se obtiene del JWT o de la API Key (`@CurrentTenant`).

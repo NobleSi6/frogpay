@@ -57,7 +57,7 @@ export class HealthController {
   async checkHealth(@Res() res: Response): Promise<Response> {
     const api = this.apiHealth.check();
     const db = await this.dbHealth.check();
-    const eventBus = this.eventBusHealth.check();
+    const eventBus = await this.eventBusHealth.check();
 
     const isHealthy = api.status === 'up' && db.status === 'up' && eventBus.status === 'up';
 

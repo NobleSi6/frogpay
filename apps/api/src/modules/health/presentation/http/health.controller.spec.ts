@@ -15,7 +15,7 @@ describe('HealthController', () => {
 
   beforeEach(() => {
     apiHealth = {
-      check: jest.fn().mockReturnValue({
+      check: jest.fn().mockResolvedValue({
         status: 'up',
         uptime: 100,
         memoryUsageMb: 50,
