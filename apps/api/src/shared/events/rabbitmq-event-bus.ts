@@ -27,7 +27,11 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
   constructor(private readonly config: ConfigService) {}
 
   async onModuleInit(): Promise<void> {
-    await this.connect();
+    try {
+      await this.connect();
+    } catch (error) {
+      this.logger.warn(`RabbitMQ no estÃ¡ disponible al iniciar; se reintentarÃ¡ al publicar o verificar salud: ${this.errorMessage(error)}`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -61,7 +65,6 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
       .then((channel) => this.registerSubscription(channel, subscription))
       .catch((error: unknown) => {
         this.logger.error(`No se pudo registrar consumidor para ${eventName}: ${this.errorMessage(error)}`);
-        throw error;
       });
     this.pendingRegistrations.push(registration);
   }

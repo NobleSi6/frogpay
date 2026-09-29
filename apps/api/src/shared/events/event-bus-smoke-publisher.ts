@@ -15,10 +15,14 @@ export class EventBusSmokePublisher implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     if (this.config.get<string>('nodeEnv') !== 'development') return;
-    await this.eventBus.publish(new ArchitectureSmokeEvent({
-      source: 'api',
-      message: 'RabbitMQ event bus smoke test',
-    }));
-    this.logger.log('Evento de prueba listo en la cola frogpay.events.smoke');
+    try {
+      await this.eventBus.publish(new ArchitectureSmokeEvent({
+        source: 'api',
+        message: 'RabbitMQ event bus smoke test',
+      }));
+      this.logger.log('Evento de prueba listo en la cola frogpay.events.smoke');
+    } catch (error) {
+      this.logger.warn(`Se omitiÃ³ el evento smoke porque RabbitMQ no estÃ¡ disponible: ${error instanceof Error ? error.message : 'error desconocido'}`);
+    }
   }
 }

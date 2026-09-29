@@ -25,7 +25,14 @@ export class PrismaService
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
+    try {
+      await this.$connect();
+    } catch (error) {
+      this.logger.warn(
+        `PostgreSQL no estÃ¡ disponible al iniciar; la API arrancarÃ¡ en modo degradado: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+      return;
+    }
 
     try {
       const roles = await this.$queryRaw<DatabaseRole[]>`

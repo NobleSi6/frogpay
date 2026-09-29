@@ -27,8 +27,11 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    // Obtener rol del usuario autenticado (JWT payload o header de pruebas de desarrollo x-user-role)
-    const userRole = request.user?.role || request.headers['x-user-role'];
+    // El header solo sirve para pruebas locales; en producciÃ³n se acepta un usuario autenticado.
+    const developmentRole = process.env.NODE_ENV === 'production'
+      ? undefined
+      : request.headers['x-user-role'];
+    const userRole = request.user?.role || developmentRole;
 
     if (!userRole) {
       throw new ForbiddenException('Acceso denegado: se requiere autenticación con rol autorizado');
