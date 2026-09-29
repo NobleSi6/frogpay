@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "nest build",
+    "build": "nest build --path prisma/tsconfig.build.json",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --config jest.config.cjs"
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --config jest.config.cjs",
+    "db:seed": "prisma db seed --schema prisma/schema.prisma"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.0",
@@ -30,5 +31,8 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+  },
+  "prisma": {
+    "seed": "node --loader ts-node/esm prisma/seed.ts"
   }
 }
