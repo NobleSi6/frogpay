@@ -2,6 +2,8 @@ ALTER TABLE tenant
   ADD COLUMN webhook_url text,
   ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}';
 
+CREATE UNIQUE INDEX idx_tenant_name_lower ON tenant (lower(name));
+
 ALTER TABLE tenant
   DROP CONSTRAINT IF EXISTS tenant_status_check,
   ADD CONSTRAINT tenant_status_check

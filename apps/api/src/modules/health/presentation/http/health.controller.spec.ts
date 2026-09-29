@@ -15,7 +15,7 @@ describe('HealthController', () => {
 
   beforeEach(() => {
     apiHealth = {
-      check: jest.fn().mockResolvedValue({
+      check: jest.fn().mockReturnValue({
         status: 'up',
         uptime: 100,
         memoryUsageMb: 50,
@@ -41,26 +41,23 @@ describe('HealthController', () => {
 
     mockResponse = {
       status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
     };
 
     controller = new HealthController(apiHealth, dbHealth, eventBusHealth);
   });
 
   it('debe retornar HTTP 200 y status "ok" cuando todos los servicios están UP', async () => {
-    await controller.checkHealth(mockResponse as Response);
+    const result = await controller.checkHealth(mockResponse as Response);
 
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.OK);
-    expect(mockResponse.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'ok',
-        services: expect.objectContaining({
-          api: expect.objectContaining({ status: 'up' }),
-          database: expect.objectContaining({ status: 'up' }),
-          eventBus: expect.objectContaining({ status: 'up' }),
-        }),
+    expect(result).toEqual(expect.objectContaining({
+      status: 'ok',
+      services: expect.objectContaining({
+        api: expect.objectContaining({ status: 'up' }),
+        database: expect.objectContaining({ status: 'up' }),
+        eventBus: expect.objectContaining({ status: 'up' }),
       }),
-    );
+    }));
   });
 
   it('debe retornar HTTP 503 y status "degraded" cuando un servicio está DOWN', async () => {
@@ -70,13 +67,9 @@ describe('HealthController', () => {
       latencyMs: -1,
     });
 
-    await controller.checkHealth(mockResponse as Response);
+    const result = await controller.checkHealth(mockResponse as Response);
 
     expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
-    expect(mockResponse.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'degraded',
-      }),
-    );
+    expect(result.status).toBe('degraded');
   });
 });

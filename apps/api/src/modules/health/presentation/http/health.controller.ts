@@ -54,15 +54,24 @@ export class HealthController {
     status: HttpStatus.SERVICE_UNAVAILABLE,
     description: 'Uno o más componentes críticos del sistema están caídos.',
   })
-  async checkHealth(@Res() res: Response): Promise<Response> {
+  async checkHealth(@Res({ passthrough: true }) res: Response): Promise<{
+    status: 'ok' | 'degraded';
+    timestamp: string;
+    services: {
+      api: ReturnType<ApiHealthIndicator['check']>;
+      database: Awaited<ReturnType<DatabaseHealthIndicator['check']>>;
+      eventBus: Awaited<ReturnType<EventBusHealthIndicator['check']>>;
+    };
+  }> {
     const api = this.apiHealth.check();
     const db = await this.dbHealth.check();
     const eventBus = await this.eventBusHealth.check();
 
     const isHealthy = api.status === 'up' && db.status === 'up' && eventBus.status === 'up';
 
+    const status: 'ok' | 'degraded' = isHealthy ? 'ok' : 'degraded';
     const payload = {
-      status: isHealthy ? 'ok' : 'degraded',
+      status,
       timestamp: new Date().toISOString(),
       services: {
         api,
@@ -71,7 +80,8 @@ export class HealthController {
       },
     };
 
-    const statusCode = isHealthy ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
-    return res.status(statusCode).json(payload);
+    const statusCode = status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
+    res.status(statusCode);
+    return payload;
   }
 }

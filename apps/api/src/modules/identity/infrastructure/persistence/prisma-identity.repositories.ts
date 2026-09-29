@@ -5,6 +5,7 @@ import { ApiKey } from '../../domain/entities/api-key.entity';
 import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
 import { UserRole } from '../../domain/entities/user.entity';
+import { TenantRegistrationRepository } from '../../application/ports/tenant-registration.repository';
 import { IApiKeyRepository } from '../../domain/repositories/api-key.repository.interface';
 import { ITenantRepository } from '../../domain/repositories/tenant.repository.interface';
 import { IUserRepository } from '../../domain/repositories/user.repository.interface';
@@ -26,6 +27,55 @@ const roleNames: Record<UserRole, string> = {
   FINANCE: 'tenant_finance',
   SUPPORT: 'tenant_support',
 };
+
+@Injectable()
+export class PrismaTenantRegistrationRepository implements TenantRegistrationRepository {
+  constructor(private readonly context: PrismaTenantContextService) {}
+
+  save(tenant: Tenant, owner: User, apiKeys: ApiKey[]): Promise<void> {
+    return this.context.withGlobalAccess(async (tx) => {
+      const plan = await tx.plan.findUnique({ where: { name: planNames[tenant.plan] } });
+      if (!plan) throw new Error(`No existe el plan ${planNames[tenant.plan]} en el catálogo.`);
+
+      const role = await tx.role.findUnique({ where: { name: roleNames[owner.role] } });
+      if (!role) throw new Error(`No existe el rol ${roleNames[owner.role]} en el catálogo.`);
+
+      await tx.tenant.create({
+        data: {
+          id: tenant.id,
+          name: tenant.name,
+          business_name: tenant.name,
+          tax_id: tenant.taxId.value,
+          contact_email: tenant.contactEmail.value,
+          status: tenant.status,
+          plan_id: plan.id,
+          webhook_url: tenant.webhookUrl ?? null,
+          metadata: (tenant.metadata ?? {}) as Prisma.InputJsonValue,
+          updated_at: tenant.updatedAt,
+        },
+      });
+
+      await tx.app_user.create({
+        data: {
+          id: owner.id,
+          tenant_id: tenant.id,
+          role_id: role.id,
+          email: owner.email.value,
+          name: owner.name ?? null,
+          status: owner.status,
+          invitation_token: owner.invitationTokenHash ?? null,
+          invitation_expires_at: owner.invitationExpiresAt ?? null,
+          password_hash: owner.passwordHash ?? null,
+          updated_at: owner.updatedAt,
+        },
+      });
+
+      for (const apiKey of apiKeys) {
+        await tx.api_key.create({ data: apiKeyCreateData(apiKey) });
+      }
+    });
+  }
+}
 
 @Injectable()
 export class PrismaTenantRepository implements ITenantRepository {
@@ -171,7 +221,12 @@ export class PrismaApiKeyRepository implements IApiKeyRepository {
 }
 
 function saveApiKey(tx: TenantTx, apiKey: ApiKey): Promise<unknown> {
-  const data = {
+  const data = apiKeyCreateData(apiKey);
+  return tx.api_key.upsert({ where: { id: apiKey.id }, create: { id: apiKey.id, ...data }, update: data });
+}
+
+function apiKeyCreateData(apiKey: ApiKey) {
+  return {
     tenant_id: apiKey.tenantId,
     name: apiKey.name,
     environment: apiKey.type === 'test' ? 'sandbox' : 'production',
@@ -184,7 +239,6 @@ function saveApiKey(tx: TenantTx, apiKey: ApiKey): Promise<unknown> {
     revoked_at: apiKey.isActive ? null : apiKey.updatedAt,
     updated_at: apiKey.updatedAt,
   };
-  return tx.api_key.upsert({ where: { id: apiKey.id }, create: { id: apiKey.id, ...data }, update: data });
 }
 
 function tenantFromRow(row: TenantWithPlan): Tenant {

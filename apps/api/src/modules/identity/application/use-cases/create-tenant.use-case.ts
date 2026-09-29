@@ -14,10 +14,6 @@ import {
   IUserRepository,
   USER_REPOSITORY,
 } from '../../domain/repositories/user.repository.interface';
-import {
-  API_KEY_REPOSITORY,
-  IApiKeyRepository,
-} from '../../domain/repositories/api-key.repository.interface';
 import { EVENT_BUS, IEventBus } from '../../../../shared/events/event-bus.interface';
 import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
@@ -25,6 +21,10 @@ import { ApiKey } from '../../domain/entities/api-key.entity';
 import { CryptoUtil } from '../../../../shared/utils/crypto.util';
 import { TenantCreatedEvent } from '../../domain/events/tenant-created.event';
 import { EMAIL_SENDER, EmailSender } from '../../../../shared/email/email-sender.interface';
+import {
+  TENANT_REGISTRATION_REPOSITORY,
+  TenantRegistrationRepository,
+} from '../ports/tenant-registration.repository';
 
 @Injectable()
 export class CreateTenantUseCase {
@@ -35,8 +35,8 @@ export class CreateTenantUseCase {
     private readonly tenantRepository: ITenantRepository,
     @Inject(USER_REPOSITORY)
     private readonly userRepository: IUserRepository,
-    @Inject(API_KEY_REPOSITORY)
-    private readonly apiKeyRepository: IApiKeyRepository,
+    @Inject(TENANT_REGISTRATION_REPOSITORY)
+    private readonly registrationRepository: TenantRegistrationRepository,
     @Inject(EVENT_BUS)
     private readonly eventBus: IEventBus,
     @Inject(EMAIL_SENDER)
@@ -111,10 +111,15 @@ export class CreateTenantUseCase {
       maskedKey: liveKeyGen.maskedKey,
     });
 
-    // 7. Persistencia atómica
-    await this.tenantRepository.save(tenant);
-    await this.userRepository.save(ownerUser);
-    await this.apiKeyRepository.saveMany([testApiKey, liveApiKey]);
+    // 7. Persistencia atómica del tenant, owner y sus llaves iniciales
+    try {
+      await this.registrationRepository.save(tenant, ownerUser, [testApiKey, liveApiKey]);
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        throw new ConflictException('Ya existe una empresa o usuario con los datos proporcionados.');
+      }
+      throw error;
+    }
 
     // 8. Emisión del Evento de Dominio (EDA: tenant.creado)
     const domainEvent = new TenantCreatedEvent({
@@ -196,4 +201,11 @@ export class CreateTenantUseCase {
       createdAt: tenant.createdAt,
     };
   }
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'P2002';
 }

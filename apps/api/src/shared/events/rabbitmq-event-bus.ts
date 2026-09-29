@@ -102,7 +102,23 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
     const url = this.config.get<string>('rabbitmq.url');
     if (!url) throw new ServiceUnavailableException('Falta configurar RABBITMQ_URL');
 
-    const connection = await amqp.connect(url, { timeout: 5000 });
+    const connectionUrl = new URL(url);
+    const connectionOptions: amqp.Options.Connect = {
+      protocol: connectionUrl.protocol.slice(0, -1),
+      hostname: connectionUrl.hostname,
+      port: connectionUrl.port ? Number(connectionUrl.port) : undefined,
+      username: decodeURIComponent(connectionUrl.username || 'guest'),
+      password: decodeURIComponent(connectionUrl.password || 'guest'),
+      vhost: decodeURIComponent(connectionUrl.pathname.slice(1)) || '/',
+    };
+    const locale = connectionUrl.searchParams.get('locale');
+    const heartbeat = connectionUrl.searchParams.get('heartbeat');
+    const frameMax = connectionUrl.searchParams.get('frameMax');
+    if (locale) connectionOptions.locale = locale;
+    if (heartbeat) connectionOptions.heartbeat = Number(heartbeat);
+    if (frameMax) connectionOptions.frameMax = Number(frameMax);
+
+    const connection = await amqp.connect(connectionOptions, { timeout: 5000 });
     const channel = await connection.createConfirmChannel();
     await channel.prefetch(10);
     await channel.assertExchange(EVENTS_EXCHANGE, 'topic', { durable: true });

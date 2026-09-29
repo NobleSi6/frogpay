@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TenantsController } from './presentation/http/tenants.controller';
 import { CreateTenantUseCase } from './application/use-cases/create-tenant.use-case';
+import { TENANT_REGISTRATION_REPOSITORY } from './application/ports/tenant-registration.repository';
 import { TENANT_REPOSITORY } from './domain/repositories/tenant.repository.interface';
 import { USER_REPOSITORY } from './domain/repositories/user.repository.interface';
 import { API_KEY_REPOSITORY } from './domain/repositories/api-key.repository.interface';
 import {
   PrismaApiKeyRepository,
+  PrismaTenantRegistrationRepository,
   PrismaTenantRepository,
   PrismaUserRepository,
 } from './infrastructure/persistence/prisma-identity.repositories';
@@ -28,6 +30,8 @@ import { RevokeApiKeyUseCase } from './application/use-cases/revoke-api-key.use-
   imports: [EventBusModule],
   providers: [
     TenantEventProbe,
+    PrismaTenantRegistrationRepository,
+    { provide: TENANT_REGISTRATION_REPOSITORY, useExisting: PrismaTenantRegistrationRepository },
     CreateTenantUseCase,
     ActivateInvitationUseCase,
     GenerateApiKeyUseCase,
