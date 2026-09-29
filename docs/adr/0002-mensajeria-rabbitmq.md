@@ -59,3 +59,10 @@ Adoptamos **RabbitMQ** (imagen `rabbitmq:4-management`) con estas convenciones:
 - **Consistencia eventual:** por ejemplo, el dashboard puede tardar unos segundos en reflejar un cambio. → Aceptable para el negocio; la respuesta síncrona devuelve el estado actual del pago.
 - **Sin orden garantizado entre colas.** → Los consumidores no deben depender del orden; los cambios de estado de un pago validan su estado anterior.
 - **Un componente más de infraestructura.** → Se levanta con Docker Compose y `/health` verifica que esté disponible.
+
+## Soporte en la base de datos
+
+El bus se apoya en dos tablas del modelo ([ADR-003](0003-base-de-datos-postgresql-rls.md)):
+
+- **`domain_event_outbox`** — Transactional Outbox. El módulo guarda el evento en esta tabla **dentro de la misma transacción** que el cambio de negocio, con estado `pending`. Un publicador lee los pendientes (índice parcial `idx_outbox_pending`), los envía a RabbitMQ y los marca como `published`, o como `failed` con `attempt_count` y `last_error`. Así no se pierden eventos aunque RabbitMQ esté caído en el momento del commit.
+- **`webhook_delivery`** — registro de cada envío de webhook: `attempt_count`, `next_retry_at`, `response_code`, `last_error` y estado (`pending`, `delivered`, `failed`, `dead_letter`). Permite mostrar el historial de entregas en el dashboard, reenviar manualmente desde la DLQ y auditar qué se notificó al comercio y cuándo.
