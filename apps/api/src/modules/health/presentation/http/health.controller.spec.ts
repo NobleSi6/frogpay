@@ -27,7 +27,7 @@ describe('HealthController', () => {
     dbHealth = {
       check: jest.fn().mockResolvedValue({
         status: 'up',
-        type: 'in-memory',
+        type: 'postgresql',
         latencyMs: 1.5,
       }),
     } as unknown as jest.Mocked<DatabaseHealthIndicator>;
