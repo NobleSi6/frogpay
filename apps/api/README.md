@@ -77,8 +77,12 @@ Módulos especiales:
 
 ### Invitaciones por correo (TSK-BACK1-103)
 
-Configura `RESEND_API_KEY` y `MAIL_FROM` en `apps/api/.env` (puedes partir de
-`.env.example`) con una API key de Resend y un remitente de un dominio verificado.
+En desarrollo, inicia Mailpit con `docker compose up -d mailpit`. La bandeja
+queda disponible en `http://localhost:8025` y la API se conecta por SMTP a
+`localhost:1025`; no hace falta dominio ni cuenta externa. `MAIL_PROVIDER` usa
+Mailpit por defecto en `development`. Para producción, configura
+`MAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM` con un remitente de un
+dominio verificado.
 `FRONTEND_URL` define la base del enlace de activación; por defecto es
 `http://localhost:3000`. Al crear un tenant, el owner recibe un enlace válido por
 72 horas. El frontend debe enviar `email`, `token` y `password` a

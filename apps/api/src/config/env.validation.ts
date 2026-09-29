@@ -18,6 +18,12 @@ class EnvironmentVariables {
   NODE_ENV = 'development';
 
   @IsOptional()
+  @IsIn(['mailpit', 'resend'], {
+    message: 'MAIL_PROVIDER debe ser mailpit o resend.',
+  })
+  MAIL_PROVIDER?: 'mailpit' | 'resend';
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'PORT debe ser un número entero.' })
   @Min(1, { message: 'PORT debe ser mayor que cero.' })
