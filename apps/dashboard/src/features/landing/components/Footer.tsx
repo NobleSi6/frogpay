@@ -1,6 +1,6 @@
-import Image from "next/image"
 import Link from "next/link"
 import { AtSign, Globe, MessageCircle, Rss } from "lucide-react"
+import { BrandLogo } from "@/components/brand-logo"
 
 const socialLinks = [
   { label: "X (Twitter)", href: "#", icon: AtSign },
@@ -46,13 +46,7 @@ export const Footer = () => {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-5">
           <div className="md:col-span-2">
             <Link href="/" className="mb-4 flex items-center">
-              <Image
-                src="/logo.png"
-                alt="FrogPay"
-                width={1240}
-                height={201}
-                className="h-6 w-auto"
-              />
+              <BrandLogo className="h-auto w-72 max-w-full" />
             </Link>
 
             <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">

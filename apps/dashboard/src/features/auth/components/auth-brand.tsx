@@ -1,10 +1,10 @@
-import { CircleX } from "lucide-react";
+import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function AuthBrand() {
-  return <div className="flex items-center gap-2.5 text-xl font-semibold">
-    <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-      <CircleX className="size-5" aria-hidden="true" />
-    </span>
-    <span>FrogPay</span>
-  </div>;
+  return (
+    <Link href="/" aria-label="Ir al inicio de FrogPay" className="inline-flex items-center">
+      <BrandLogo className="h-auto w-80 max-w-full" priority />
+    </Link>
+  );
 }

@@ -1,11 +1,11 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { Menu, X } from "lucide-react"
 import { cn } from "cn"
 import { Button } from "@/components/ui/button"
+import { BrandLogo } from "@/components/brand-logo"
 
 const navLinks = [
   { name: "Quiénes somos", href: "#quienes-somos" },
@@ -34,14 +34,7 @@ export const Header = () => {
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6">
         <Link href="/" className="flex items-center">
-          <Image
-            src="/logo.png"
-            alt="FrogPay"
-            width={1240}
-            height={201}
-            priority
-            className="h-7 w-auto"
-          />
+          <BrandLogo priority />
         </Link>
 
         <nav className="hidden items-center gap-8 md:flex">

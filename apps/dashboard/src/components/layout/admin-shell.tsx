@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleDollarSign, Home, LogOut, Settings, Users } from "lucide-react";
+import { Home, LogOut, Settings, Users } from "lucide-react";
 import type { ReactNode } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { logoutMock, useMockSession } from "@/features/auth/mock-auth";
 
@@ -15,7 +16,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh md:flex">
       <aside className="bg-neutral-900 p-5 text-neutral-100 md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col">
-        <Link href="/admin" className="mb-6 flex items-center gap-2 text-2xl font-semibold"><CircleDollarSign aria-hidden className="text-primary" />FrogPay</Link>
+        <Link href="/admin" aria-label="Inicio de FrogPay" className="mb-6 inline-flex w-full items-center"><BrandLogo className="h-auto w-full" priority /></Link>
         <nav aria-label="Administración" className="flex flex-wrap gap-2 md:flex-col">
           {[{ href: "/admin", label: "Inicio", Icon: Home }, { href: "/admin/tenants", label: "Tenants", Icon: Users }].map(({ href, label, Icon }) => {
             const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
