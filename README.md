@@ -20,7 +20,7 @@ frogpay/
 │   └── rabbitmq/         # definitions.json: exchanges, colas y DLQ precreadas
 ├── .github/
 │   └── workflows/        # CI: lint, tests y build en cada PR
-├── docker-compose.yml    # API, dashboard, Redis y RabbitMQ (PostgreSQL vive en Supabase)
+├── docker-compose.yml    # API, dashboard, Redis, RabbitMQ y Mailpit
 ├── .env.example          # Variables requeridas SIN valores reales (RNF-15)
 └── package.json          # Definición de workspaces y scripts globales
 ```
@@ -33,6 +33,23 @@ frogpay/
 | `docs/` | Documentación de arquitectura versionada junto al código. |
 | `infra/` | Configuración de infraestructura que no es código de la aplicación. |
 | `.github/` | Automatización del repositorio (CI y plantillas). |
+
+## Alta de tenants e invitaciones
+
+`POST /api/tenants` crea el tenant, su owner, las API keys iniciales y el evento
+`tenant.creado` dentro de una única transacción con outbox. Responde `201` con
+`invitationQueued` y las API keys; cada `rawKey` se muestra una sola vez.
+Notifications consume el evento, genera y persiste el hash del token de
+activación y envía `/activar-cuenta/{token}?email=...`. El token crudo no se
+incluye en el evento. Los errores de entrega reintentan tres veces y los fallos
+del consumidor terminan en la DLQ.
+
+En API keys, `OWNER` y `ADMIN` quedan limitados al tenant de `@CurrentTenant`;
+el `tenantId` de la ruta no cambia su alcance. Solo `PLATFORM_ADMIN` puede
+seleccionar el tenant de la ruta.
+
+El stack de desarrollo conserva API, Dashboard, Redis, RabbitMQ y Mailpit.
+Mailpit ofrece la bandeja local en `http://localhost:8025`.
 
 ## Reglas globales
 
