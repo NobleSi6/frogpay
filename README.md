@@ -34,6 +34,10 @@ frogpay/
 | `infra/` | Configuración de infraestructura que no es código de la aplicación. |
 | `.github/` | Automatización del repositorio (CI y plantillas). |
 
+## Documentación de arquitectura
+- [Diagramas C4 (Contexto, Contenedores y Componentes)](docs/c4/README.md)
+- [Decisiones de arquitectura (ADRs)](docs/adr/README.md)
+
 ## Reglas globales
 
 1. **Ningún secreto en el código.** Todo va en `.env` (ignorado por git). Solo `.env.example` se versiona.
