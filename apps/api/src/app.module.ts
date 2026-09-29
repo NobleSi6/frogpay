@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateEnvironment } from './config/env.validation.js';
 import { PrismaModule } from './shared/database/index.js';
+import { PlansModule } from './modules/plans/plans.module.js';
 
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +16,7 @@ const appDirectory = dirname(fileURLToPath(import.meta.url));
       validate: validateEnvironment,
     }),
     PrismaModule,
+    PlansModule,
   ],
 })
 export class AppModule {}
