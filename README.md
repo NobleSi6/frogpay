@@ -56,3 +56,7 @@ Mailpit ofrece la bandeja local en `http://localhost:8025`.
 1. **Ningún secreto en el código.** Todo va en `.env` (ignorado por git). Solo `.env.example` se versiona.
 2. Los tipos compartidos entre front y back se definen **solo** en `packages/contracts`.
 3. Toda decisión arquitectónica relevante se registra como ADR en `docs/adr/`.
+
+## Desarrollo local
+
+Consulta la [guía de puesta en marcha](docs/GUIA-PUESTA-EN-MARCHA.md) para conocer las dependencias, configurar el `.env` y ejecutar los servicios.
