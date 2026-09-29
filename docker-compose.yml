@@ -6,6 +6,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile.dev
     env_file: .env
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
     environment:
       RABBITMQ_URL: ""
       RABBITMQ_HOST: rabbitmq
