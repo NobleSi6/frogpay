@@ -1,12 +1,7 @@
-export default function ActivarCuentaPage({
-  params,
-}: {
-  params: { token: string };
-}) {
-  return (
-    <div>
-      <h1 className="text-h3 font-semibold mb-4">Define tu contraseña</h1>
-      {/* Usará params.token para llamar a POST /invitations/:token/accept */}
-    </div>
-  );
+import { ActivationScreen } from "@/features/auth/components/activation-screen";
+
+export default async function ActivarCuentaPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ email?: string | string[] }> }) {
+  const { token } = await params;
+  const { email } = await searchParams;
+  return <ActivationScreen key={token} token={token} invitationEmail={typeof email === "string" ? email : ""} />;
 }

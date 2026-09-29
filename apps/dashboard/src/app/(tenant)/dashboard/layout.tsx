@@ -1,8 +1,6 @@
+import { TenantShell } from "@/components/layout/tenant-shell";
+import { MockAuthGuard } from "@/features/auth/components/mock-auth-guard";
+
 export default function TenantDashboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-screen">
-      {/* TenantShell/Sidebar van aquí cuando estén listos en components/layout */}
-      <main className="flex-1 p-6">{children}</main>
-    </div>
-  );
+  return <MockAuthGuard role="OWNER"><TenantShell>{children}</TenantShell></MockAuthGuard>;
 }
