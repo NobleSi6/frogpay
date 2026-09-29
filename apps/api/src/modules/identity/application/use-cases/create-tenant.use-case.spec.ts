@@ -2,8 +2,6 @@ import { ConflictException } from '@nestjs/common';
 import { CreateTenantUseCase } from './create-tenant.use-case';
 import { ITenantRepository } from '../../domain/repositories/tenant.repository.interface';
 import { IUserRepository } from '../../domain/repositories/user.repository.interface';
-import { IApiKeyRepository } from '../../domain/repositories/api-key.repository.interface';
-import { IEventBus } from '../../../../shared/events/event-bus.interface';
 import { CreateTenantDto, TenantPlanDto } from '../dto/create-tenant.dto';
 import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
@@ -13,10 +11,7 @@ describe('CreateTenantUseCase', () => {
   let useCase: CreateTenantUseCase;
   let tenantRepo: jest.Mocked<ITenantRepository>;
   let userRepo: jest.Mocked<IUserRepository>;
-  let apiKeyRepo: jest.Mocked<IApiKeyRepository>;
   let registrationRepo: jest.Mocked<TenantRegistrationRepository>;
-  let eventBus: jest.Mocked<IEventBus>;
-  let emailSender: { sendInvitation: jest.Mock };
 
   const validDto: CreateTenantDto = {
     name: 'Acme Bolivia S.R.L.',
@@ -42,25 +37,9 @@ describe('CreateTenantUseCase', () => {
       save: jest.fn().mockResolvedValue(undefined),
     };
 
-    apiKeyRepo = {
-      findById: jest.fn().mockResolvedValue(null),
-      findByTenantId: jest.fn().mockResolvedValue([]),
-      findByKeyHash: jest.fn().mockResolvedValue(null),
-      save: jest.fn().mockResolvedValue(undefined),
-      saveMany: jest.fn().mockResolvedValue(undefined),
-    };
-
     registrationRepo = { save: jest.fn().mockResolvedValue(undefined) };
 
-    eventBus = {
-      publish: jest.fn().mockResolvedValue(undefined),
-      publishAll: jest.fn().mockResolvedValue(undefined),
-      subscribe: jest.fn(),
-    };
-
-    emailSender = { sendInvitation: jest.fn().mockResolvedValue(undefined) };
-
-    useCase = new CreateTenantUseCase(tenantRepo, userRepo, registrationRepo, eventBus, emailSender);
+    useCase = new CreateTenantUseCase(tenantRepo, userRepo, registrationRepo);
   });
 
   it('debe registrar un tenant exitosamente con su owner invitado, API Keys y evento de dominio', async () => {
@@ -80,12 +59,7 @@ describe('CreateTenantUseCase', () => {
     expect(result.owner.email).toBe(validDto.contactEmail);
     expect(result.owner.role).toBe('OWNER');
     expect(result.owner.status).toBe('invited');
-    expect(result.invitationSent).toBe(true);
-    expect(emailSender.sendInvitation).toHaveBeenCalledTimes(1);
-    const invitationEmail = emailSender.sendInvitation.mock.calls[0][0];
-    expect(invitationEmail.to).toBe(validDto.contactEmail);
-    expect(invitationEmail.invitationUrl).toContain('token=');
-    expect(JSON.stringify(result)).not.toContain(new URL(invitationEmail.invitationUrl).searchParams.get('token'));
+    expect(result.invitationQueued).toBe(true);
 
     // Verificaciones de API Keys
     expect(result.apiKeys).toHaveLength(2);
@@ -104,11 +78,10 @@ describe('CreateTenantUseCase', () => {
     expect(registrationRepo.save).toHaveBeenCalledTimes(1);
     expect(registrationRepo.save.mock.calls[0][2]).toHaveLength(2);
 
-    // Verificación de publicación del evento EDA (tenant.creado)
-    expect(eventBus.publish).toHaveBeenCalledTimes(1);
-    const publishedEvent = eventBus.publish.mock.calls[0][0];
-    expect(publishedEvent.eventName).toBe('tenant.creado');
-    expect(publishedEvent.aggregateId).toBe(result.id);
+    const outboxEvent = registrationRepo.save.mock.calls[0][3];
+    expect(outboxEvent.eventName).toBe('tenant.creado');
+    expect(outboxEvent.aggregateId).toBe(result.id);
+    expect(JSON.stringify(outboxEvent)).not.toContain('token=');
   });
 
   it('debe lanzar ConflictException si el NIT / Tax ID ya está registrado', async () => {
@@ -123,7 +96,7 @@ describe('CreateTenantUseCase', () => {
     await expect(useCase.execute(validDto)).rejects.toThrow(ConflictException);
     expect(tenantRepo.save).not.toHaveBeenCalled();
     expect(registrationRepo.save).not.toHaveBeenCalled();
-    expect(eventBus.publish).not.toHaveBeenCalled();
+    expect(registrationRepo.save).not.toHaveBeenCalled();
   });
 
   it('debe lanzar ConflictException si el nombre de la empresa ya está registrado', async () => {

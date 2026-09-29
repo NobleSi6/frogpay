@@ -24,7 +24,7 @@ describe('TenantsController', () => {
       status: 'invited',
       invitationExpiresAt: new Date(Date.now() + 72 * 3600 * 1000),
     },
-    invitationSent: true,
+    invitationQueued: true,
     apiKeys: [
       {
         type: 'test',

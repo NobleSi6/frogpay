@@ -75,7 +75,7 @@ Módulos especiales:
 | TSK-ARQ/DEVs-100 Modelo E-R y migraciones | `prisma/`, `docs/erd/` |
 | TSK-DEV1-101 POST /tenants | `modules/identity` |
 | TSK-BACK1-102 API Key / Secret | `modules/identity` (`infrastructure/` para el hash) |
-| TSK-BACK1-103 Correo de invitación | `modules/notifications` (escucha `tenant.creado`) |
+| TSK-BACK1-103 Correo de invitación | `modules/notifications` (consume `tenant.creado` desde outbox/RabbitMQ) |
 | TSK-BACK2-201 / 202 Planes | `modules/plans`, `prisma/seed.ts` |
 | TSK-BACK2-203 RLS | `shared/database`, `prisma/migrations` |
 | TSK-ARQ/BACK1-104 Bus de eventos | `shared/events`, `infra/rabbitmq` |
@@ -85,22 +85,35 @@ Módulos especiales:
 
 ### Invitaciones por correo (TSK-BACK1-103)
 
+El alta persiste el tenant y `tenant.creado` en una única transacción. El outbox
+publica el evento en RabbitMQ y `modules/notifications` genera el token de
+invitación y consume el evento. El correo se reintenta tres veces; si el proveedor
+sigue fallando, el evento va a la DLQ y el alta no se revierte ni responde error
+por una caída temporal del correo.
+
 En desarrollo, inicia Mailpit con `docker compose up -d mailpit`. La bandeja
 queda disponible en `http://localhost:8025` y la API se conecta por SMTP a
 `localhost:1025`; no hace falta dominio ni cuenta externa. `MAIL_PROVIDER` usa
-Mailpit por defecto en `development`. Para producción, configura
+Mailpit por defecto en `development`. El enlace es
+`/activar-cuenta/{token}?email={email}`; Front envía esos valores y la contraseña
+a `POST /api/identity/activate-invitation`. Para producción, configura
 `MAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM` con un remitente de un
 dominio verificado.
 `FRONTEND_URL` define la base del enlace de activación; por defecto es
 `http://localhost:3000`. Al crear un tenant, el owner recibe un enlace válido por
-72 horas. El frontend debe enviar `email`, `token` y `password` a
-`POST /api/identity/activate-invitation`. El endpoint activa la cuenta y guarda
-la contraseña con scrypt. El token se guarda como hash y no se devuelve en la
-respuesta ni se publica en el evento.
+72 horas. El endpoint activa la cuenta y guarda la contraseña con scrypt. El
+token se guarda como hash y no se devuelve en la respuesta ni se publica en el
+evento.
 
-El endpoint de creación informa un error si el proveedor no está configurado o
-rechaza el mensaje; el tenant y el owner ya se habrán persistido, por lo que se
-debe revisar/reintentar el envío antes de registrar nuevamente ese correo.
+El endpoint de creación responde `invitationQueued`; la entrega final se puede
+revisar en los logs de Notifications, RabbitMQ y Mailpit/Resend.
+
+### Aislamiento de API keys
+
+En `POST`, `GET` y `DELETE /api/tenants/:tenantId/api-keys`, los roles `OWNER`
+y `ADMIN` operan siempre sobre el tenant del contexto autenticado
+(`@CurrentTenant`); el `tenantId` de la ruta no cambia ese alcance. Solo
+`PLATFORM_ADMIN` puede seleccionar el tenant usando la ruta.
 
 ### Bus RabbitMQ (TSK-ARQ/BACK1-104)
 

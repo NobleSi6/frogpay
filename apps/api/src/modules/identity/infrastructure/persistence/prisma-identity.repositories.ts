@@ -6,13 +6,14 @@ import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
 import { UserRole } from '../../domain/entities/user.entity';
 import { TenantRegistrationRepository } from '../../application/ports/tenant-registration.repository';
+import { TenantCreatedEvent } from '../../domain/events/tenant-created.event';
 import { IApiKeyRepository } from '../../domain/repositories/api-key.repository.interface';
 import { ITenantRepository } from '../../domain/repositories/tenant.repository.interface';
 import { IUserRepository } from '../../domain/repositories/user.repository.interface';
 
 type TenantWithPlan = Prisma.tenantGetPayload<{ include: { plan: true } }>;
 type UserWithRole = Prisma.app_userGetPayload<{ include: { role: true } }>;
-type ApiKeyRow = Prisma.api_keyGetPayload<{}>;
+type ApiKeyRow = Prisma.api_keyGetPayload<Record<string, never>>;
 
 const planNames: Record<Tenant['plan'], string> = {
   free: 'Free',
@@ -32,13 +33,21 @@ const roleNames: Record<UserRole, string> = {
 export class PrismaTenantRegistrationRepository implements TenantRegistrationRepository {
   constructor(private readonly context: PrismaTenantContextService) {}
 
-  save(tenant: Tenant, owner: User, apiKeys: ApiKey[]): Promise<void> {
+  save(tenant: Tenant, owner: User, apiKeys: ApiKey[], event: TenantCreatedEvent): Promise<void> {
     return this.context.withGlobalAccess(async (tx) => {
       const plan = await tx.plan.findUnique({ where: { name: planNames[tenant.plan] } });
       if (!plan) throw new Error(`No existe el plan ${planNames[tenant.plan]} en el catálogo.`);
 
       const role = await tx.role.findUnique({ where: { name: roleNames[owner.role] } });
       if (!role) throw new Error(`No existe el rol ${roleNames[owner.role]} en el catálogo.`);
+
+      const eventEnvelope = JSON.parse(JSON.stringify({
+        eventId: event.eventId,
+        occurredOn: event.occurredOn.toISOString(),
+        eventName: event.eventName,
+        aggregateId: event.aggregateId,
+        payload: event.payload,
+      })) as Prisma.InputJsonValue;
 
       await tx.tenant.create({
         data: {
@@ -73,6 +82,16 @@ export class PrismaTenantRegistrationRepository implements TenantRegistrationRep
       for (const apiKey of apiKeys) {
         await tx.api_key.create({ data: apiKeyCreateData(apiKey) });
       }
+
+      await tx.domain_event_outbox.create({
+        data: {
+          aggregate_type: 'tenant',
+          aggregate_id: tenant.id,
+          tenant_id: tenant.id,
+          event_type: event.eventName,
+          payload: eventEnvelope,
+        },
+      });
     });
   }
 }

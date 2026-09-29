@@ -76,6 +76,17 @@ export class User extends Entity<UserProps> {
     this._updatedAt = new Date();
   }
 
+  public issueInvitation(tokenHash: string, expiresInHours = 72): void {
+    if (this.props.status !== 'invited') {
+      throw new Error('Solo se puede invitar a un usuario en estado invited');
+    }
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + expiresInHours);
+    this.props.invitationTokenHash = tokenHash;
+    this.props.invitationExpiresAt = expiresAt;
+    this._updatedAt = new Date();
+  }
+
   public isInvitationValid(): boolean {
     if (this.props.status !== 'invited' || !this.props.invitationTokenHash) {
       return false;
@@ -89,13 +100,13 @@ export class User extends Entity<UserProps> {
   public static createInvitedOwner(
     tenantId: string,
     email: string,
-    invitationTokenHash: string,
+    invitationTokenHash?: string,
     expiresInHours = 72,
     id?: string,
   ): User {
     const emailVo = Email.create(email);
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + expiresInHours);
+    const expiresAt = invitationTokenHash ? new Date() : undefined;
+    expiresAt?.setHours(expiresAt.getHours() + expiresInHours);
 
     return new User(
       {

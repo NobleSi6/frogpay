@@ -20,6 +20,8 @@ ESTADO LOCAL
   identity_compatibility. Prisma indica schema al dia.
 - RabbitMQ y Mailpit locales estan disponibles; la API y /health reportan los
   dos componentes arriba.
+- Stack local: `docker compose up --build -d`; Dashboard en :3000, API en :4000,
+  RabbitMQ UI en :15672, Mailpit UI en :8025 y Redis en :6379.
 
 CONTRATOS PARA FRONT
 
@@ -42,7 +44,7 @@ Body:
 - taxId: 5 a 20 caracteres alfanumericos o guion.
 - contactEmail: correo valido.
 - webhookUrl y metadata son opcionales.
-- Respuesta 201: tenant, owner invitado, invitationSent y las dos API keys
+- Respuesta 201: tenant, owner invitado, invitationQueued y las dos API keys
   iniciales.
 - La respuesta incluye rawKey de las llaves test y live una sola vez.
   Mostrarla una vez al usuario; no guardarla en logs ni en almacenamiento web.
@@ -59,8 +61,8 @@ Body:
   "password": "una-clave-segura-de-12"
 }
 
-- El correo contiene /activate?email=...&token=...; Front debe leer esos
-  parametros y enviarlos junto con password.
+- El correo contiene /activar-cuenta/{token}?email=...; Front debe leer el token
+  de la ruta y el email de query, y enviarlos junto con password.
 - password requiere minimo 12 caracteres; token requiere minimo 32.
 - Respuesta 200 al activar; 400 si el token no existe, expiro o ya fue usado.
 
@@ -77,6 +79,9 @@ GET /api/tenants/:tenantId/api-keys
 
 DELETE /api/tenants/:tenantId/api-keys/:apiKeyId
 - Revoca la llave; no la borra fisicamente.
+- OWNER y ADMIN siempre operan sobre su tenant autenticado (`@CurrentTenant`);
+  el tenantId de la URL no puede cambiar su alcance. Solo PLATFORM_ADMIN puede
+  elegir el tenant indicado en la ruta.
 
 4. Health
 GET /health
@@ -118,8 +123,10 @@ TAREAS YA IMPLEMENTADAS
   transaccional, owner invitado, llaves iniciales y evento tenant.creado.
 - TSK-BACK1-102: API keys criptograficamente aleatorias; hashes SHA-256 en DB,
   rawKey de una sola entrega, listado enmascarado y revocacion.
-- TSK-BACK1-103: correo de invitacion con Mailpit en development y Resend
-  configurable para production. Mailpit UI: http://localhost:8025.
+- TSK-BACK1-103: `tenant.creado` se guarda en outbox junto con el tenant; el
+  consumidor de Notifications genera el token, reintenta el correo tres veces
+  y deja eventos fallidos en DLQ. Mailpit en development, Resend configurable
+  para production. Mailpit UI: http://localhost:8025.
 - TSK-ARQ/BACK1-104: RabbitMQ, exchange durable, confirmaciones, colas durables,
   DLQ y probes smoke para Identity, Payments y Adapters.
 - TSK-BACK1-105: /health revisa API, PostgreSQL y RabbitMQ; responde 200/503.

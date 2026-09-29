@@ -7,6 +7,7 @@ export interface AppConfig {
   rabbitmq: {
     user: string;
     pass: string;
+    host: string;
     url?: string;
   };
 }
@@ -20,12 +21,13 @@ export default (): AppConfig => ({
   rabbitmq: {
     user: process.env.RABBITMQ_USER || 'frogpay',
     pass: process.env.RABBITMQ_PASS || 'guest',
+    host: process.env.RABBITMQ_HOST || 'localhost',
     url: process.env.RABBITMQ_URL || createLocalRabbitUrl(),
   },
 });
 
 function createLocalRabbitUrl(): string {
-  const url = new URL('amqp://localhost:5672');
+  const url = new URL(`amqp://${process.env.RABBITMQ_HOST || 'localhost'}:5672`);
   url.username = process.env.RABBITMQ_USER || 'frogpay';
   url.password = process.env.RABBITMQ_PASS || 'guest';
   return url.toString();

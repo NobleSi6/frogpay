@@ -53,11 +53,11 @@ export class OwnerInvitationDto {
   })
   status: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Fecha límite de expiración de la invitación (72 horas)',
     example: '2026-10-01T15:00:00.000Z',
   })
-  invitationExpiresAt: Date;
+  invitationExpiresAt?: Date;
 }
 
 export class TenantResponseDto {
@@ -115,8 +115,8 @@ export class TenantResponseDto {
   })
   owner: OwnerInvitationDto;
 
-  @ApiProperty({ description: 'Confirma que se envió el correo de invitación', example: true })
-  invitationSent: boolean;
+  @ApiProperty({ description: 'Confirma que se encoló el correo de invitación', example: true })
+  invitationQueued: boolean;
 
   @ApiProperty({
     description: 'Llaves de API iniciales generadas (Test y Live)',

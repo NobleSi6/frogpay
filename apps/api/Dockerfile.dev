@@ -1,0 +1,9 @@
+FROM node:22-alpine
+RUN apk add --no-cache openssl libc6-compat
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+RUN npm ci -w apps/api
+COPY apps/api apps/api
+EXPOSE 4000
+CMD ["sh", "-c", "npm exec -w apps/api -- prisma generate && npm run start:dev -w apps/api"]

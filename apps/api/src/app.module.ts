@@ -12,6 +12,7 @@ import { EventBusSmokePublisher } from './shared/events/event-bus-smoke-publishe
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ProviderAdaptersModule } from './modules/provider-adapters/provider-adapters.module';
 import { PrismaModule } from './shared/database/prisma.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { PrismaModule } from './shared/database/prisma.module';
     PrismaModule,
     EventBusModule,
     IdentityModule,
+    NotificationsModule,
     HealthModule,
     PaymentsModule,
     ProviderAdaptersModule,

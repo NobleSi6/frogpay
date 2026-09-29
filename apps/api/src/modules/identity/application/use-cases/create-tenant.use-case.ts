@@ -14,13 +14,11 @@ import {
   IUserRepository,
   USER_REPOSITORY,
 } from '../../domain/repositories/user.repository.interface';
-import { EVENT_BUS, IEventBus } from '../../../../shared/events/event-bus.interface';
 import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
 import { ApiKey } from '../../domain/entities/api-key.entity';
 import { CryptoUtil } from '../../../../shared/utils/crypto.util';
 import { TenantCreatedEvent } from '../../domain/events/tenant-created.event';
-import { EMAIL_SENDER, EmailSender } from '../../../../shared/email/email-sender.interface';
 import {
   TENANT_REGISTRATION_REPOSITORY,
   TenantRegistrationRepository,
@@ -37,10 +35,6 @@ export class CreateTenantUseCase {
     private readonly userRepository: IUserRepository,
     @Inject(TENANT_REGISTRATION_REPOSITORY)
     private readonly registrationRepository: TenantRegistrationRepository,
-    @Inject(EVENT_BUS)
-    private readonly eventBus: IEventBus,
-    @Inject(EMAIL_SENDER)
-    private readonly emailSender: EmailSender,
   ) {}
 
   async execute(dto: CreateTenantDto): Promise<TenantResponseDto> {
@@ -81,13 +75,7 @@ export class CreateTenantUseCase {
     });
 
     // 5. Creación del Usuario Propietario (HU-01B: Estado 'invited' con Token criptográfico de 72h)
-    const invitationToken = CryptoUtil.generateSecureToken(32);
-    const ownerUser = User.createInvitedOwner(
-      tenant.id,
-      dto.contactEmail,
-      CryptoUtil.hashString(invitationToken),
-      72,
-    );
+    const ownerUser = User.createInvitedOwner(tenant.id, dto.contactEmail);
 
     // 6. Generación de API Keys iniciales (Test y Live con hashing SHA-256)
     const testKeyGen = CryptoUtil.generateApiKey('test');
@@ -111,17 +99,6 @@ export class CreateTenantUseCase {
       maskedKey: liveKeyGen.maskedKey,
     });
 
-    // 7. Persistencia atómica del tenant, owner y sus llaves iniciales
-    try {
-      await this.registrationRepository.save(tenant, ownerUser, [testApiKey, liveApiKey]);
-    } catch (error) {
-      if (isUniqueConstraintViolation(error)) {
-        throw new ConflictException('Ya existe una empresa o usuario con los datos proporcionados.');
-      }
-      throw error;
-    }
-
-    // 8. Emisión del Evento de Dominio (EDA: tenant.creado)
     const domainEvent = new TenantCreatedEvent({
       tenantId: tenant.id,
       name: tenant.name,
@@ -134,7 +111,6 @@ export class CreateTenantUseCase {
         email: ownerUser.email.value,
         role: ownerUser.role,
         status: ownerUser.status,
-        invitationExpiresAt: ownerUser.invitationExpiresAt!,
       },
       apiKeys: [
         {
@@ -152,18 +128,17 @@ export class CreateTenantUseCase {
       ],
     });
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const invitationUrl = new URL('/activate', frontendUrl);
-    invitationUrl.searchParams.set('email', ownerUser.email.value);
-    invitationUrl.searchParams.set('token', invitationToken);
-    await this.emailSender.sendInvitation({
-      to: ownerUser.email.value,
-      tenantName: tenant.name,
-      invitationUrl: invitationUrl.toString(),
-      expiresAt: ownerUser.invitationExpiresAt!,
-    });
+    // 7. Persistencia atómica del tenant, owner y sus llaves iniciales
+    try {
+      await this.registrationRepository.save(tenant, ownerUser, [testApiKey, liveApiKey], domainEvent);
+    } catch (error) {
+      if (isUniqueConstraintViolation(error)) {
+        throw new ConflictException('Ya existe una empresa o usuario con los datos proporcionados.');
+      }
+      throw error;
+    }
 
-    await this.eventBus.publish(domainEvent);
+    // 8. El outbox publicará tenant.creado y Notifications enviará la invitación
     this.logger.log(`Tenant '${tenant.name}' creado exitosamente (ID: ${tenant.id})`);
 
     // 9. Construcción y retorno de respuesta (incluyendo llaves en texto plano solo en esta respuesta única)
@@ -181,9 +156,9 @@ export class CreateTenantUseCase {
         email: ownerUser.email.value,
         role: ownerUser.role,
         status: ownerUser.status,
-        invitationExpiresAt: ownerUser.invitationExpiresAt!,
+        invitationExpiresAt: ownerUser.invitationExpiresAt,
       },
-      invitationSent: true,
+      invitationQueued: true,
       apiKeys: [
         {
           type: 'test',
