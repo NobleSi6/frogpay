@@ -158,8 +158,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
 
-  /* ---------- Tipografía ---------- */
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  /* ---------- Tipografía (Inter) ---------- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   --text-h1: 48px;
   --text-h1--line-height: 56px;
