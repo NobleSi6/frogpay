@@ -35,6 +35,14 @@ apps/api/
     └── e2e/                  # Flujos completos por HTTP
 ```
 
+Desde la raíz del repositorio, aplica las migraciones y carga los catálogos antes
+de registrar tenants:
+
+```sh
+npm exec -w apps/api -- prisma migrate deploy
+npm run db:seed -w apps/api
+```
+
 ### Estructura interna de cada módulo de negocio
 
 ```

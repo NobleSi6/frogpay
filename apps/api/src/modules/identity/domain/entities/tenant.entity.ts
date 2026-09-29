@@ -2,8 +2,8 @@ import { Entity } from '../../../../shared/domain/entity.base';
 import { Email } from '../value-objects/email.vo';
 import { TaxId } from '../value-objects/tax-id.vo';
 
-export type TenantStatus = 'active' | 'inactive' | 'suspended';
-export type TenantPlan = 'free' | 'starter' | 'pro' | 'enterprise';
+export type TenantStatus = 'invited' | 'active' | 'inactive' | 'suspended';
+export type TenantPlan = 'free' | 'premium';
 
 export interface TenantProps {
   name: string;

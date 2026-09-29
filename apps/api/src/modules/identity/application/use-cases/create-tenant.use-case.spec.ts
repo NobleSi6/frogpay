@@ -20,7 +20,7 @@ describe('CreateTenantUseCase', () => {
     name: 'Acme Bolivia S.R.L.',
     taxId: '1029384021',
     contactEmail: 'gerencia@acme.bo',
-    plan: TenantPlanDto.STARTER,
+    plan: TenantPlanDto.PREMIUM,
     webhookUrl: 'https://acme.bo/webhooks',
     metadata: { city: 'La Paz' },
   };
@@ -68,7 +68,7 @@ describe('CreateTenantUseCase', () => {
     expect(result.name).toBe(validDto.name);
     expect(result.taxId).toBe(validDto.taxId);
     expect(result.contactEmail).toBe(validDto.contactEmail);
-    expect(result.plan).toBe('starter');
+    expect(result.plan).toBe('premium');
     expect(result.status).toBe('active');
 
     // Verificaciones del Owner

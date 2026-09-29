@@ -13,9 +13,7 @@ import {
 
 export enum TenantPlanDto {
   FREE = 'free',
-  STARTER = 'starter',
-  PRO = 'pro',
-  ENTERPRISE = 'enterprise',
+  PREMIUM = 'premium',
 }
 
 export class CreateTenantDto {
@@ -54,7 +52,7 @@ export class CreateTenantDto {
   })
   @IsOptional()
   @IsEnum(TenantPlanDto, {
-    message: 'El plan debe ser uno de los siguientes: free, starter, pro, enterprise',
+    message: 'El plan debe ser free o premium',
   })
   plan?: TenantPlanDto;
 

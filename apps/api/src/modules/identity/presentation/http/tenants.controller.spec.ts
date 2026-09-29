@@ -15,7 +15,7 @@ describe('TenantsController', () => {
     name: 'Banco Ganadero',
     taxId: '1020304050',
     contactEmail: 'contacto@ganadero.com.bo',
-    plan: 'enterprise',
+    plan: 'premium',
     status: 'active',
     owner: {
       userId: 'user-123',
@@ -72,7 +72,7 @@ describe('TenantsController', () => {
       name: 'Banco Ganadero',
       taxId: '1020304050',
       contactEmail: 'contacto@ganadero.com.bo',
-      plan: TenantPlanDto.ENTERPRISE,
+      plan: TenantPlanDto.PREMIUM,
     };
 
     const result = await controller.createTenant(dto);

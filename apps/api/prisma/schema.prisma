@@ -8,90 +8,313 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum TenantStatus {
-  active
-  inactive
-  suspended
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model api_key {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String    @db.Uuid
+  name         String?
+  key_prefix   String    @unique
+  secret_hash  String
+  environment  String
+  status       String    @default("active")
+  masked_key   String    @default("")
+  expires_at   DateTime? @db.Timestamptz(6)
+  last_used_at DateTime? @db.Timestamptz(6)
+  revoked_at   DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  tenant       tenant    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenant_id], map: "idx_apikey_tenant")
 }
 
-enum TenantPlan {
-  free
-  starter
-  pro
-  enterprise
-}
-
-enum UserRole {
-  PLATFORM_ADMIN
-  OWNER
-  ADMIN
-  DEVELOPER
-  FINANCE
-  SUPPORT
-}
-
-enum UserStatus {
-  invited
-  active
-  suspended
-}
-
-enum ApiKeyType {
-  test
-  live
-}
-
-model Tenant {
-  id           String       @id @default(uuid()) @db.Uuid
-  name         String
-  taxId        String       @unique @map("tax_id")
-  contactEmail String       @map("contact_email")
-  status       TenantStatus @default(active)
-  plan         TenantPlan   @default(free)
-  webhookUrl   String?      @map("webhook_url")
-  metadata     Json         @default("{}")
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
-  users        User[]
-  apiKeys      ApiKey[]
-
-  @@index([name])
-  @@map("tenants")
-}
-
-model User {
-  id                    String     @id @default(uuid()) @db.Uuid
-  tenantId              String     @map("tenant_id") @db.Uuid
-  email                 String     @unique
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model app_user {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id             String?     @db.Uuid
+  role_id               String      @db.Uuid
+  email                 String
   name                  String?
-  role                  UserRole
-  status                UserStatus @default(invited)
-  invitationTokenHash   String?    @unique @map("invitation_token_hash")
-  invitationExpiresAt   DateTime?  @map("invitation_expires_at") @db.Timestamptz(6)
-  passwordHash          String?    @map("password_hash")
-  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant                Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  password_hash         String?
+  status                String      @default("invited")
+  invitation_token      String?
+  invitation_expires_at DateTime?   @db.Timestamptz(6)
+  created_at            DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime    @default(now()) @db.Timestamptz(6)
+  role                  role        @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant                tenant?     @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  audit_log             audit_log[]
+  refund                refund[]
 
-  @@index([tenantId])
-  @@map("users")
+  @@index([role_id], map: "idx_app_user_role")
+  @@index([tenant_id], map: "idx_app_user_tenant")
 }
 
-model ApiKey {
-  id         String     @id @default(uuid()) @db.Uuid
-  tenantId   String     @map("tenant_id") @db.Uuid
-  name       String
-  type       ApiKeyType
-  keyPrefix  String     @map("key_prefix")
-  keyHash    String     @unique @map("key_hash")
-  maskedKey  String     @map("masked_key")
-  isActive   Boolean    @default(true) @map("is_active")
-  expiresAt  DateTime?  @map("expires_at") @db.Timestamptz(6)
-  lastUsedAt DateTime?  @map("last_used_at") @db.Timestamptz(6)
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model audit_log {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id     String?   @db.Uuid
+  actor_user_id String?   @db.Uuid
+  action        String
+  resource_type String
+  resource_id   String?   @db.Uuid
+  metadata      Json      @default("{}")
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  app_user      app_user? @relation(fields: [actor_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant        tenant?   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([tenantId])
-  @@map("api_keys")
+  @@index([actor_user_id], map: "idx_audit_actor")
+  @@index([tenant_id, created_at(sort: Desc)], map: "idx_audit_tenant_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model daily_tenant_metrics {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String   @db.Uuid
+  date             DateTime @db.Date
+  environment      String   @default("production")
+  total_volume     Decimal  @default(0) @db.Decimal(14, 2)
+  total_count      Int      @default(0)
+  approved_count   Int      @default(0)
+  rejected_count   Int      @default(0)
+  method_breakdown Json     @default("{}")
+  tenant           tenant   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, date, environment])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model domain_event_outbox {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  aggregate_type String
+  aggregate_id   String    @db.Uuid
+  tenant_id      String?   @db.Uuid
+  event_type     String
+  payload        Json
+  status         String    @default("pending")
+  attempt_count  Int       @default(0)
+  last_error     String?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  published_at   DateTime? @db.Timestamptz(6)
+  tenant         tenant?   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment {
+  id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                     String                      @db.Uuid
+  idempotency_key               String
+  idempotency_body_hash         String
+  amount                        Decimal                     @db.Decimal(14, 2)
+  currency                      String                      @default("BOB") @db.Char(3)
+  status                        String                      @default("pending")
+  payment_method_id             String                      @db.Uuid
+  provider_id                   String                      @db.Uuid
+  environment                   String                      @default("sandbox")
+  tenant_provider_credential_id String?                     @db.Uuid
+  provider_transaction_id       String?
+  merchant_reference            String?
+  error_code                    String?
+  commission_amount             Decimal?                    @db.Decimal(14, 2)
+  net_amount                    Decimal?                    @db.Decimal(14, 2)
+  created_at                    DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime                    @default(now()) @db.Timestamptz(6)
+  provider                      provider                    @relation(fields: [provider_id, payment_method_id], references: [id, payment_method_id], onDelete: NoAction, onUpdate: NoAction)
+  tenant                        tenant                      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant_provider_credential    tenant_provider_credential? @relation(fields: [tenant_provider_credential_id, tenant_id, provider_id, environment], references: [id, tenant_id, provider_id, environment], onDelete: NoAction, onUpdate: NoAction)
+  payment_status_history        payment_status_history[]
+  refund                        refund[]
+  webhook_delivery              webhook_delivery[]
+
+  @@unique([id, tenant_id])
+  @@unique([tenant_id, idempotency_key])
+  @@index([tenant_id, created_at(sort: Desc)], map: "idx_payment_tenant_created")
+  @@index([tenant_id, environment], map: "idx_payment_tenant_env")
+  @@index([tenant_id, status], map: "idx_payment_tenant_status")
+}
+
+model payment_method {
+  id       String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code     String     @unique
+  name     String
+  provider provider[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model payment_status_history {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id      String   @db.Uuid
+  tenant_id       String   @db.Uuid
+  previous_status String?
+  new_status      String
+  metadata        Json     @default("{}")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  payment         payment  @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([payment_id, created_at], map: "idx_psh_payment")
+  @@index([tenant_id], map: "idx_psh_tenant")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model plan {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String   @unique
+  monthly_price        Decimal  @default(0) @db.Decimal(10, 2)
+  monthly_volume_limit Decimal? @db.Decimal(14, 2)
+  features             Json     @default("{}")
+  commission_fixed     Decimal  @default(0) @db.Decimal(10, 2)
+  commission_pct       Decimal  @default(0) @db.Decimal(5, 4)
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  tenant               tenant[]
+}
+
+model provider {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                       String                       @unique
+  name                       String
+  payment_method_id          String                       @db.Uuid
+  is_active                  Boolean                      @default(true)
+  payment                    payment[]
+  payment_method             payment_method               @relation(fields: [payment_method_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant_provider_credential tenant_provider_credential[]
+
+  @@unique([id, payment_method_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model refund {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id            String    @db.Uuid
+  tenant_id             String    @db.Uuid
+  amount                Decimal   @db.Decimal(14, 2)
+  reason                String?
+  authorized_by_user_id String?   @db.Uuid
+  status                String    @default("pending")
+  provider_refund_id    String?
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+  app_user              app_user? @relation(fields: [authorized_by_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment               payment   @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([authorized_by_user_id], map: "idx_refund_authorized_by")
+  @@index([payment_id], map: "idx_refund_payment")
+  @@index([tenant_id, created_at(sort: Desc)], map: "idx_refund_tenant")
+}
+
+model role {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String     @unique
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  app_user   app_user[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tenant {
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                       String
+  business_name              String
+  tax_id                     String                       @unique
+  address                    String?
+  contact_email              String?
+  contact_phone              String?
+  webhook_url                String?
+  metadata                   Json                         @default("{}")
+  status                     String                       @default("invited")
+  plan_id                    String?                      @db.Uuid
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  api_key                    api_key[]
+  app_user                   app_user[]
+  audit_log                  audit_log[]
+  daily_tenant_metrics       daily_tenant_metrics[]
+  domain_event_outbox        domain_event_outbox[]
+  payment                    payment[]
+  plan                       plan?                        @relation(fields: [plan_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant_plan_usage          tenant_plan_usage[]
+  tenant_provider_credential tenant_provider_credential[]
+  webhook                    webhook[]
+
+  @@index([plan_id], map: "idx_tenant_plan")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tenant_plan_usage {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String  @db.Uuid
+  period      String  @db.Char(7)
+  volume_used Decimal @default(0) @db.Decimal(14, 2)
+  tx_count    Int     @default(0)
+  tenant      tenant  @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([tenant_id, period])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model tenant_provider_credential {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id             String    @db.Uuid
+  provider_id           String    @db.Uuid
+  environment           String
+  credentials_encrypted String
+  is_active             Boolean   @default(true)
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  payment               payment[]
+  provider              provider  @relation(fields: [provider_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant                tenant    @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([id, tenant_id, provider_id, environment])
+  @@unique([tenant_id, provider_id, environment])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id        String             @db.Uuid
+  url              String
+  secret_encrypted String
+  event_types      Json               @default("[]")
+  is_active        Boolean            @default(true)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  tenant           tenant             @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  webhook_delivery webhook_delivery[]
+
+  @@unique([id, tenant_id])
+  @@index([tenant_id], map: "idx_webhook_tenant")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_delivery {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  webhook_id    String    @db.Uuid
+  tenant_id     String    @db.Uuid
+  payment_id    String?   @db.Uuid
+  event_type    String
+  payload       Json
+  status        String    @default("pending")
+  attempt_count Int       @default(0)
+  next_retry_at DateTime? @db.Timestamptz(6)
+  response_code Int?
+  last_error    String?
+  delivered_at  DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+  payment       payment?  @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  webhook       webhook   @relation(fields: [webhook_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([payment_id], map: "idx_wd_payment")
+  @@index([tenant_id], map: "idx_wd_tenant")
+  @@index([webhook_id, status], map: "idx_wd_webhook_status")
 }
