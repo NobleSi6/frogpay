@@ -1,8 +1,6 @@
+import { TenantShell } from "@/components/layout/tenant-shell";
+import { AuthGuard } from "@/features/auth/components/auth-guard";
+
 export default function TenantDashboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex min-h-screen">
-      {/* TenantShell/Sidebar van aquí cuando estén listos en components/layout */}
-      <main className="flex-1 p-6">{children}</main>
-    </div>
-  );
+  return <AuthGuard role="OWNER"><TenantShell>{children}</TenantShell></AuthGuard>;
 }

@@ -40,6 +40,10 @@ export class InMemoryTenantRepository implements ITenantRepository {
     this.items.set(tenant.id, tenant);
   }
 
+  async listAll() {
+    return [...this.items.values()].map((tenant) => ({ id: tenant.id, name: tenant.name, status: tenant.status, createdAt: tenant.createdAt, ownerEmail: tenant.contactEmail.value }));
+  }
+
   /**
    * Utilidad para tests: limpiar el estado del repositorio
    */

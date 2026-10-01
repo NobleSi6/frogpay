@@ -1,3 +1,6 @@
+import { TenantList } from "@/features/tenants/components/tenant-list";
+import { NewTenantModal } from "@/features/tenants/components/new-tenant-modal";
+
 export default function NuevoTenantPage() {
-  return <h1 className="text-h3 font-semibold">Nuevo tenant</h1>;
+  return <><TenantList /><NewTenantModal /></>;
 }

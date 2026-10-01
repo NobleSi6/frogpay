@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GenerateApiKeyUseCase } from '../../application/use-cases/generate-api-key.use-case';
 import { ListApiKeysUseCase } from '../../application/use-cases/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from '../../application/use-cases/revoke-api-key.use-case';
+import { RegenerateApiKeyUseCase } from '../../application/use-cases/regenerate-api-key.use-case';
 import { GenerateApiKeyDto } from '../../application/dto/generate-api-key.dto';
 import { ApiKeyResponseDto, GeneratedApiKeyResponseDto } from '../../application/dto/api-key-response.dto';
 import { Roles } from '../../../../shared/auth/roles.decorator';
@@ -16,7 +17,6 @@ type AuthenticatedRequest = Request & {
 
 @ApiTags('API Keys')
 @ApiBearerAuth()
-@ApiHeader({ name: 'x-user-role', description: 'Rol de desarrollo para probar en Swagger', required: true })
 @Controller('tenants/:tenantId/api-keys')
 @UseGuards(RolesGuard)
 @Roles('PLATFORM_ADMIN', 'OWNER', 'ADMIN')
@@ -25,6 +25,7 @@ export class ApiKeysController {
     private readonly generateApiKey: GenerateApiKeyUseCase,
     private readonly listApiKeys: ListApiKeysUseCase,
     private readonly revokeApiKey: RevokeApiKeyUseCase,
+    private readonly regenerateApiKey: RegenerateApiKeyUseCase,
   ) {}
 
   @Post()
@@ -43,6 +44,18 @@ export class ApiKeysController {
       currentTenantId,
     );
     return this.generateApiKey.execute(tenantId, dto);
+  }
+
+  @Post(':apiKeyId/regenerate')
+  @ApiOperation({ summary: 'Revocar una API key y generar su reemplazo de forma atómica' })
+  regenerate(
+    @Param('tenantId') routeTenantId: string,
+    @Param('apiKeyId') apiKeyId: string,
+    @CurrentTenant({ optional: true }) currentTenantId: string | undefined,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<GeneratedApiKeyResponseDto> {
+    const tenantId = resolveApiKeyTenantId(getRequestRole(request), routeTenantId, currentTenantId);
+    return this.regenerateApiKey.execute(tenantId, apiKeyId);
   }
 
   @Get()

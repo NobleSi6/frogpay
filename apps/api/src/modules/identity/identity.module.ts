@@ -19,6 +19,11 @@ import { ApiKeysController } from './presentation/http/api-keys.controller';
 import { GenerateApiKeyUseCase } from './application/use-cases/generate-api-key.use-case';
 import { ListApiKeysUseCase } from './application/use-cases/list-api-keys.use-case';
 import { RevokeApiKeyUseCase } from './application/use-cases/revoke-api-key.use-case';
+import { RegenerateApiKeyUseCase } from './application/use-cases/regenerate-api-key.use-case';
+import { LoginUseCase } from './application/use-cases/login.use-case';
+import { GetCurrentUserUseCase } from './application/use-cases/get-current-user.use-case';
+import { ListTenantsUseCase } from './application/use-cases/list-tenants.use-case';
+import { JwtTokenService } from '../../shared/auth/jwt-token.service';
 
 @Module({
   controllers: [TenantsController, IdentityController, ApiKeysController],
@@ -32,6 +37,11 @@ import { RevokeApiKeyUseCase } from './application/use-cases/revoke-api-key.use-
     GenerateApiKeyUseCase,
     ListApiKeysUseCase,
     RevokeApiKeyUseCase,
+    RegenerateApiKeyUseCase,
+    LoginUseCase,
+    GetCurrentUserUseCase,
+    ListTenantsUseCase,
+    JwtTokenService,
     {
       provide: TENANT_REPOSITORY,
       useClass: PrismaTenantRepository,

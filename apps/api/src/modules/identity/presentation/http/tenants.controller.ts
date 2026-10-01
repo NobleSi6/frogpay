@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -8,7 +9,6 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiHeader,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -18,13 +18,25 @@ import { CreateTenantDto } from '../../application/dto/create-tenant.dto';
 import { TenantResponseDto } from '../../application/dto/tenant-response.dto';
 import { Roles } from '../../../../shared/auth/roles.decorator';
 import { RolesGuard } from '../../../../shared/auth/roles.guard';
+import { ListTenantsUseCase } from '../../application/use-cases/list-tenants.use-case';
+import { TenantListResponseDto } from '../../application/dto/tenant-list-response.dto';
 
 @ApiTags('Tenants')
 @ApiBearerAuth()
 @Controller('tenants')
 @UseGuards(RolesGuard)
 export class TenantsController {
-  constructor(private readonly createTenantUseCase: CreateTenantUseCase) {}
+  constructor(
+    private readonly createTenantUseCase: CreateTenantUseCase,
+    private readonly listTenantsUseCase: ListTenantsUseCase,
+  ) {}
+
+  @Get()
+  @Roles('PLATFORM_ADMIN')
+  @ApiOperation({ summary: 'Listar tenants para Platform Admin' })
+  listTenants(): Promise<TenantListResponseDto[]> {
+    return this.listTenantsUseCase.execute();
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -33,11 +45,6 @@ export class TenantsController {
     summary: 'Registrar una nueva empresa / tenant (HU-01 & TSK-DEV1-101)',
     description:
       'Crea una empresa/tenant, inicializa al usuario propietario en estado "invited" con token seguro (HU-01B), genera las llaves de API iniciales (Test y Live) almacenando únicamente su hash SHA-256 (RNF-05), y emite el evento de dominio "tenant.creado". Requiere rol PLATFORM_ADMIN (RNF-11).',
-  })
-  @ApiHeader({
-    name: 'x-user-role',
-    description: 'Header de rol para desarrollo/testing (e.g. PLATFORM_ADMIN)',
-    required: false,
   })
   @ApiResponse({
     status: HttpStatus.CREATED,

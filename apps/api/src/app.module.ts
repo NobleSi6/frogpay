@@ -7,6 +7,8 @@ import { validateEnvironment } from './config/env.validation';
 import { IdentityModule } from './modules/identity/identity.module';
 import { HealthModule } from './modules/health/health.module';
 import { RolesGuard } from './shared/auth/roles.guard';
+import { AuthenticationGuard } from './shared/auth/authentication.guard';
+import { JwtTokenService } from './shared/auth/jwt-token.service';
 import { EventBusModule } from './shared/events/event-bus.module';
 import { EventBusSmokePublisher } from './shared/events/event-bus-smoke-publisher';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -32,6 +34,11 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
   ],
   providers: [
     EventBusSmokePublisher,
+    JwtTokenService,
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: RolesGuard,

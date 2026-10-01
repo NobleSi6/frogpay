@@ -11,7 +11,7 @@ describe('TenantCreatedEmailHandler', () => {
     'owner@example.test',
   );
   const event = new TenantCreatedEvent({
-    tenantId: owner.tenantId,
+    tenantId: owner.tenantId!,
     name: 'Demo Ltd',
     taxId: '12345678',
     contactEmail: owner.email.value,
@@ -36,7 +36,7 @@ describe('TenantCreatedEmailHandler', () => {
   });
 
   it('stores only a token hash and retries the email before acknowledging', async () => {
-    const invitationOwner = User.createInvitedOwner(owner.tenantId, owner.email.value);
+    const invitationOwner = User.createInvitedOwner(owner.tenantId!, owner.email.value);
     const userRepository = {
       findById: jest.fn().mockResolvedValue(invitationOwner),
       save: jest.fn().mockResolvedValue(undefined),
@@ -62,7 +62,7 @@ describe('TenantCreatedEmailHandler', () => {
 
   it('throws after three failed delivery attempts so RabbitMQ can route the event to the DLQ', async () => {
     const userRepository = {
-      findById: jest.fn().mockResolvedValue(User.createInvitedOwner(owner.tenantId, owner.email.value)),
+      findById: jest.fn().mockResolvedValue(User.createInvitedOwner(owner.tenantId!, owner.email.value)),
       save: jest.fn().mockResolvedValue(undefined),
     };
     const emailSender = { sendInvitation: jest.fn().mockRejectedValue(new Error('provider down')) };

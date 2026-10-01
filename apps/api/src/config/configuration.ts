@@ -4,6 +4,8 @@ export interface AppConfig {
   corsOrigin: string;
   databaseUrl: string;
   directUrl?: string;
+  jwtSecret: string;
+  jwtExpiresInSeconds: number;
   rabbitmq: {
     user: string;
     pass: string;
@@ -18,6 +20,8 @@ export default (): AppConfig => ({
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
   directUrl: process.env.DIRECT_URL,
+  jwtSecret: process.env.JWT_SECRET || '',
+  jwtExpiresInSeconds: parseInt(process.env.JWT_EXPIRES_IN_SECONDS || '3600', 10),
   rabbitmq: {
     user: process.env.RABBITMQ_USER || 'frogpay',
     pass: process.env.RABBITMQ_PASS || 'guest',

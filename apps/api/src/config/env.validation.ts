@@ -5,6 +5,7 @@ import {
     IsNotEmpty,
     IsOptional,
     IsString,
+    MinLength,
     Min,
     validateSync,
 } from 'class-validator';
@@ -37,6 +38,17 @@ class EnvironmentVariables {
   @IsString({ message: 'DIRECT_URL debe ser una cadena.' })
   @IsNotEmpty({ message: 'DIRECT_URL no puede estar vacía.' })
   DIRECT_URL?: string;
+
+  @IsString({ message: 'JWT_SECRET es obligatoria.' })
+  @IsNotEmpty({ message: 'JWT_SECRET es obligatoria.' })
+  @MinLength(32, { message: 'JWT_SECRET debe tener al menos 32 caracteres.' })
+  JWT_SECRET!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(60)
+  JWT_EXPIRES_IN_SECONDS = 3600;
 
   @IsOptional()
   @Type(() => Number)

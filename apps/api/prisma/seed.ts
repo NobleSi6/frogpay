@@ -1,4 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
+
+const scrypt = promisify(scryptCallback);
 
 const directUrl = process.env.DIRECT_URL;
 
@@ -116,6 +120,60 @@ async function seed(): Promise<void> {
       },
     });
   }
+
+  await seedDevelopmentPlatformAdmin();
+}
+
+async function seedDevelopmentPlatformAdmin(): Promise<void> {
+  if (process.env.NODE_ENV !== 'development') return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT set_config('app.global_access', 'true', true)`;
+    const role = await tx.role.findUniqueOrThrow({ where: { name: 'platform_admin' } });
+    const existingAdmin = await tx.app_user.findFirst({
+      where: { role_id: role.id },
+      select: { id: true },
+    });
+    if (existingAdmin) {
+      console.log('Platform Admin de desarrollo ya existe; no se modificó.');
+      return;
+    }
+
+    const email = process.env.DEV_PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.DEV_PLATFORM_ADMIN_PASSWORD;
+    if (!email || !password) {
+      throw new Error(
+        'Configura DEV_PLATFORM_ADMIN_EMAIL y DEV_PLATFORM_ADMIN_PASSWORD en apps/api/.env para crear el Platform Admin de desarrollo.',
+      );
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('DEV_PLATFORM_ADMIN_EMAIL debe ser un correo válido.');
+    }
+    if (password.length < 12) {
+      throw new Error('DEV_PLATFORM_ADMIN_PASSWORD debe tener al menos 12 caracteres.');
+    }
+
+    const duplicateEmail = await tx.app_user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (duplicateEmail) {
+      throw new Error('DEV_PLATFORM_ADMIN_EMAIL ya pertenece a otro usuario.');
+    }
+
+    const salt = randomBytes(16).toString('hex');
+    const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
+    await tx.app_user.create({
+      data: {
+        tenant_id: null,
+        role_id: role.id,
+        email,
+        status: 'active',
+        password_hash: `scrypt$${salt}$${derivedKey.toString('hex')}`,
+      },
+    });
+    console.log('Platform Admin de desarrollo creado correctamente.');
+  });
 }
 
 async function main(): Promise<void> {

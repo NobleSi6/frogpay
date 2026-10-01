@@ -11,6 +11,7 @@ describe('validateEnvironment', () => {
     const environment = validateEnvironment({
       NODE_ENV: 'test',
       DATABASE_URL: 'postgresql://localhost/test',
+      JWT_SECRET: 'test-secret-with-at-least-32-characters',
       PRISMA_TX_TIMEOUT_MS: '5000',
       PRISMA_TX_MAX_WAIT_MS: '2000',
     });

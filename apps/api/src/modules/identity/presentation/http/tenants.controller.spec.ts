@@ -5,6 +5,7 @@ import { CreateTenantUseCase } from '../../application/use-cases/create-tenant.u
 import { CreateTenantDto, TenantPlanDto } from '../../application/dto/create-tenant.dto';
 import { TenantResponseDto } from '../../application/dto/tenant-response.dto';
 import { RolesGuard } from '../../../../shared/auth/roles.guard';
+import { ListTenantsUseCase } from '../../application/use-cases/list-tenants.use-case';
 
 describe('TenantsController', () => {
   let controller: TenantsController;
@@ -54,6 +55,7 @@ describe('TenantsController', () => {
           provide: CreateTenantUseCase,
           useValue: mockUseCase,
         },
+        { provide: ListTenantsUseCase, useValue: { execute: jest.fn().mockResolvedValue([]) } },
         Reflector,
         RolesGuard,
       ],

@@ -12,7 +12,7 @@ export type UserRole =
 export type UserStatus = 'invited' | 'active' | 'suspended';
 
 export interface UserProps {
-  tenantId: string;
+  tenantId?: string;
   email: Email;
   name?: string;
   role: UserRole;
@@ -27,7 +27,7 @@ export class User extends Entity<UserProps> {
     super(props, id, createdAt, updatedAt);
   }
 
-  get tenantId(): string {
+  get tenantId(): string | undefined {
     return this.props.tenantId;
   }
 
@@ -123,7 +123,7 @@ export class User extends Entity<UserProps> {
 
   public static reconstitute(
     props: {
-      tenantId: string;
+      tenantId?: string;
       email: string;
       name?: string;
       role: UserRole;

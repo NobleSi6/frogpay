@@ -27,6 +27,7 @@ describe('CreateTenantUseCase', () => {
       findById: jest.fn().mockResolvedValue(null),
       findByTaxId: jest.fn().mockResolvedValue(null),
       findByName: jest.fn().mockResolvedValue(null),
+      listAll: jest.fn().mockResolvedValue([]),
       save: jest.fn().mockResolvedValue(undefined),
     };
 

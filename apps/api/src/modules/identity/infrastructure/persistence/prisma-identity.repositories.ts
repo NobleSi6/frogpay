@@ -127,6 +127,29 @@ export class PrismaTenantRepository implements ITenantRepository {
     });
   }
 
+  listAll(): Promise<import('../../domain/repositories/tenant.repository.interface').TenantListRecord[]> {
+    return this.context.withGlobalAccess(async (tx) => {
+      const rows = await tx.tenant.findMany({
+        include: {
+          plan: true,
+          app_user: {
+            where: { role: { name: 'tenant_owner' } },
+            select: { email: true },
+            take: 1,
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.business_name || row.name,
+        status: row.status,
+        createdAt: row.created_at,
+        ownerEmail: row.app_user[0]?.email ?? row.contact_email ?? '',
+      }));
+    });
+  }
+
   save(tenant: Tenant): Promise<void> {
     return this.context.withGlobalAccess(async (tx) => {
       const plan = await tx.plan.findUnique({ where: { name: planNames[tenant.plan] } });
@@ -274,9 +297,8 @@ function tenantFromRow(row: TenantWithPlan): Tenant {
 }
 
 function userFromRow(row: UserWithRole): User {
-  if (!row.tenant_id) throw new Error(`El usuario ${row.id} no pertenece a un tenant.`);
   return User.reconstitute({
-    tenantId: row.tenant_id,
+    tenantId: row.tenant_id ?? undefined,
     email: row.email,
     name: row.name ?? undefined,
     role: userRoleFromRow(row.role.name),
