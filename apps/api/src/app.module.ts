@@ -15,6 +15,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { ProviderAdaptersModule } from './modules/provider-adapters/provider-adapters.module';
 import { PrismaModule } from './shared/database/prisma.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PlansModule } from './modules/plans/plans.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     HealthModule,
     PaymentsModule,
     ProviderAdaptersModule,
+    PlansModule,
   ],
   providers: [
     EventBusSmokePublisher,
