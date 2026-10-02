@@ -20,7 +20,7 @@ frogpay/
 │   └── rabbitmq/         # definitions.json: exchanges, colas y DLQ precreadas
 ├── .github/
 │   └── workflows/        # CI: lint, tests y build en cada PR
-├── docker-compose.yml    # API, dashboard, Redis y RabbitMQ (PostgreSQL vive en Supabase)
+├── docker-compose.yml    # API, dashboard, Redis, RabbitMQ y Mailpit
 ├── .env.example          # Variables requeridas SIN valores reales (RNF-15)
 └── package.json          # Definición de workspaces y scripts globales
 ```
@@ -34,6 +34,22 @@ frogpay/
 | `infra/` | Configuración de infraestructura que no es código de la aplicación. |
 | `.github/` | Automatización del repositorio (CI y plantillas). |
 
+## Alta de tenants e invitaciones
+
+`POST /api/tenants` crea el tenant, su owner, las API keys iniciales y el evento
+`tenant.creado` dentro de una única transacción con outbox. Responde `201` con
+`invitationQueued` y las API keys; cada `rawKey` se muestra una sola vez.
+Notifications consume el evento, genera y persiste el hash del token de
+activación y envía `/activar-cuenta/{token}?email=...`. El token crudo no se
+incluye en el evento. Los errores de entrega reintentan tres veces y los fallos
+del consumidor terminan en la DLQ.
+
+En API keys, `OWNER` y `ADMIN` quedan limitados al tenant de `@CurrentTenant`;
+el `tenantId` de la ruta no cambia su alcance. Solo `PLATFORM_ADMIN` puede
+seleccionar el tenant de la ruta.
+
+El stack de desarrollo conserva API, Dashboard, Redis, RabbitMQ y Mailpit.
+Mailpit ofrece la bandeja local en `http://localhost:8025`.
 ## Documentación de arquitectura
 - [Diagramas C4 (Contexto, Contenedores y Componentes)](docs/c4/README.md)
 - [Decisiones de arquitectura (ADRs)](docs/adr/README.md)
@@ -43,3 +59,7 @@ frogpay/
 1. **Ningún secreto en el código.** Todo va en `.env` (ignorado por git). Solo `.env.example` se versiona.
 2. Los tipos compartidos entre front y back se definen **solo** en `packages/contracts`.
 3. Toda decisión arquitectónica relevante se registra como ADR en `docs/adr/`.
+
+## Desarrollo local
+
+Consulta la [guía de puesta en marcha](docs/GUIA-PUESTA-EN-MARCHA.md) para conocer las dependencias, configurar el `.env` y ejecutar los servicios.

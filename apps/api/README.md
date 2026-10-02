@@ -35,6 +35,14 @@ apps/api/
     └── e2e/                  # Flujos completos por HTTP
 ```
 
+Desde la raíz del repositorio, aplica las migraciones y carga los catálogos antes
+de registrar tenants:
+
+```sh
+npm exec -w apps/api -- prisma migrate deploy
+npm run db:seed -w apps/api
+```
+
 ### Estructura interna de cada módulo de negocio
 
 ```
@@ -67,13 +75,63 @@ Módulos especiales:
 | TSK-ARQ/DEVs-100 Modelo E-R y migraciones | `prisma/`, `docs/erd/` |
 | TSK-DEV1-101 POST /tenants | `modules/identity` |
 | TSK-BACK1-102 API Key / Secret | `modules/identity` (`infrastructure/` para el hash) |
-| TSK-BACK1-103 Correo de invitación | `modules/notifications` (escucha `tenant.creado`) |
+| TSK-BACK1-103 Correo de invitación | `modules/notifications` (consume `tenant.creado` desde outbox/RabbitMQ) |
 | TSK-BACK2-201 / 202 Planes | `modules/plans`, `prisma/seed.ts` |
 | TSK-BACK2-203 RLS | `shared/database`, `prisma/migrations` |
 | TSK-ARQ/BACK1-104 Bus de eventos | `shared/events`, `infra/rabbitmq` |
 | TSK-BACK1-105 /health | `modules/health` |
 
 ## Reglas de la arquitectura
+
+### Invitaciones por correo (TSK-BACK1-103)
+
+El alta persiste el tenant y `tenant.creado` en una única transacción. El outbox
+publica el evento en RabbitMQ y `modules/notifications` genera el token de
+invitación y consume el evento. El correo se reintenta tres veces; si el proveedor
+sigue fallando, el evento va a la DLQ y el alta no se revierte ni responde error
+por una caída temporal del correo.
+
+En desarrollo, inicia Mailpit con `docker compose up -d mailpit`. La bandeja
+queda disponible en `http://localhost:8025` y la API se conecta por SMTP a
+`localhost:1025`; no hace falta dominio ni cuenta externa. `MAIL_PROVIDER` usa
+Mailpit por defecto en `development`. El enlace es
+`/activar-cuenta/{token}?email={email}`; Front envía esos valores y la contraseña
+a `POST /api/identity/activate-invitation`. Para producción, configura
+`MAIL_PROVIDER=resend`, `RESEND_API_KEY` y `MAIL_FROM` con un remitente de un
+dominio verificado.
+`FRONTEND_URL` define la base del enlace de activación; por defecto es
+`http://localhost:3000`. Al crear un tenant, el owner recibe un enlace válido por
+72 horas. El endpoint activa la cuenta y guarda la contraseña con scrypt. El
+token se guarda como hash y no se devuelve en la respuesta ni se publica en el
+evento.
+
+El endpoint de creación responde `invitationQueued`; la entrega final se puede
+revisar en los logs de Notifications, RabbitMQ y Mailpit/Resend.
+
+### Aislamiento de API keys
+
+En `POST`, `GET` y `DELETE /api/tenants/:tenantId/api-keys`, los roles `OWNER`
+y `ADMIN` operan siempre sobre el tenant del contexto autenticado
+(`@CurrentTenant`); el `tenantId` de la ruta no cambia ese alcance. Solo
+`PLATFORM_ADMIN` puede seleccionar el tenant usando la ruta.
+
+### Bus RabbitMQ (TSK-ARQ/BACK1-104)
+
+Desde la raíz del repositorio, configura `RABBITMQ_USER` y `RABBITMQ_PASS` en
+`.env` (usa `.env.example` como referencia) e inicia el broker con
+`docker compose up -d rabbitmq`. La interfaz de administración está disponible
+en `http://localhost:15672`; el puerto AMQP local es `5672`. Copia esas
+credenciales a `apps/api/.env` para ejecutar la API desde el host; por defecto,
+la API construye la URL local con esas credenciales. En otros entornos puedes
+definir explícitamente `RABBITMQ_URL`.
+
+El bus usa el exchange durable `frogpay.events` (topic), mensajes persistentes,
+confirmación del broker y una DLQ por cada cola consumidora. Tenants, Pagos y
+Adapters tienen colas independientes. Al iniciar la API en `development` se
+publica `arquitectura.prueba`; queda disponible en `frogpay.events.smoke` y los
+tres esqueletos registran su consumo en los logs. `/health` consulta la conexión
+real con RabbitMQ. En producción, configura `RABBITMQ_URL` con el hostname
+interno del broker y no expongas el puerto de administración públicamente.
 
 1. **Regla de dependencia:** `presentation → application → domain`. `domain/` nunca importa NestJS, Prisma ni nada de `infrastructure/`.
 2. **Los módulos no se importan entre sí por dentro.** Se comunican por **eventos** del bus. La única excepción son consultas síncronas imprescindibles (p. ej. "límite restante del plan"), que se hacen a través de un servicio que el módulo **exporta explícitamente**.

@@ -1,0 +1,150 @@
+FROGPAY - HANDOFF BACK-2 / FRONT
+Fecha: 2026-09-29
+Rama de integracion: feature/back1-jean
+
+OBJETIVO
+Este documento fija los contratos que ya existen para que Back-2 y Front
+puedan implementar sus partes sin duplicar tablas, cambiar nombres o adivinar
+payloads. Coordinar cambios incompatibles antes de editar el schema compartido.
+
+ESTADO LOCAL
+- API: http://localhost:4000
+- Swagger: http://localhost:4000/api/docs
+- Prefijo HTTP: /api, excepto health.
+- Health: GET http://localhost:4000/health
+- CORS local: http://localhost:3000
+- Dashboard: aun no se encontro cliente HTTP ni variable de base URL implementada.
+  Front puede acordar NEXT_PUBLIC_API_BASE_URL=http://localhost:4000 y agregar
+  /api en el cliente.
+- Supabase tiene aplicadas las migraciones 0_init e
+  identity_compatibility. Prisma indica schema al dia.
+- RabbitMQ y Mailpit locales estan disponibles; la API y /health reportan los
+  dos componentes arriba.
+- Stack local: `docker compose up --build -d`; Dashboard en :3000, API en :4000,
+  RabbitMQ UI en :15672, Mailpit UI en :8025 y Redis en :6379.
+
+CONTRATOS PARA FRONT
+
+1. Registrar empresa
+POST /api/tenants
+Content-Type: application/json
+
+Body:
+{
+  "name": "Comercio Demo S.R.L.",
+  "taxId": "1028472023",
+  "contactEmail": "admin@comercio.demo",
+  "plan": "free",
+  "webhookUrl": "https://comercio.demo/webhooks/frogpay",
+  "metadata": { "country": "BO", "currency": "BOB" }
+}
+
+- plan acepta unicamente "free" o "premium"; si se omite usa "free".
+- name: minimo 2 caracteres.
+- taxId: 5 a 20 caracteres alfanumericos o guion.
+- contactEmail: correo valido.
+- webhookUrl y metadata son opcionales.
+- Respuesta 201: tenant, owner invitado, invitationQueued y las dos API keys
+  iniciales.
+- La respuesta incluye rawKey de las llaves test y live una sola vez.
+  Mostrarla una vez al usuario; no guardarla en logs ni en almacenamiento web.
+- 400: validacion; 403: rol insuficiente; 409: NIT, nombre o correo duplicado.
+
+2. Activar invitacion
+POST /api/identity/activate-invitation
+Content-Type: application/json
+
+Body:
+{
+  "email": "admin@comercio.demo",
+  "token": "token-recibido-en-el-enlace",
+  "password": "una-clave-segura-de-12"
+}
+
+- El correo contiene /activar-cuenta/{token}?email=...; Front debe leer el token
+  de la ruta y el email de query, y enviarlos junto con password.
+- password requiere minimo 12 caracteres; token requiere minimo 32.
+- Respuesta 200 al activar; 400 si el token no existe, expiro o ya fue usado.
+
+3. Administrar API keys
+POST /api/tenants/:tenantId/api-keys
+Body: { "name": "Integracion web", "type": "test" }
+Opcional: "expiresAt": fecha ISO-8601.
+- type acepta "test" o "live".
+- rawKey se devuelve solo al crear. Las consultas posteriores solo devuelven
+  keyPrefix y maskedKey.
+
+GET /api/tenants/:tenantId/api-keys
+- Devuelve llaves enmascaradas; no muestra hashes ni secretos.
+
+DELETE /api/tenants/:tenantId/api-keys/:apiKeyId
+- Revoca la llave; no la borra fisicamente.
+- OWNER y ADMIN siempre operan sobre su tenant autenticado (`@CurrentTenant`);
+  el tenantId de la URL no puede cambiar su alcance. Solo PLATFORM_ADMIN puede
+  elegir el tenant indicado en la ruta.
+
+4. Health
+GET /health
+- 200 y status "ok" cuando API, Supabase y RabbitMQ estan arriba.
+- 503 y status "degraded" con el estado de cada dependencia cuando alguna cae.
+- Respuesta incluye X-Response-Time.
+
+AUTORIZACION LOCAL
+- Para probar rutas protegidas en development, enviar:
+  x-user-role: PLATFORM_ADMIN
+  Roles aceptados en API keys: PLATFORM_ADMIN, OWNER, ADMIN.
+- Este header solo se acepta fuera de production. No implementa autenticacion.
+- En production se requiere request.user desde un proveedor/guard de auth; ese
+  JWT/login aun debe acordarse e integrarse con Back-2/Front. No confiar en
+  x-user-role para produccion.
+
+CONTRATO DE DATOS PARA BACK-2
+- El schema vigente usa modelos Prisma/table names: tenant, app_user, api_key,
+  plan y role. Campos DB usan snake_case.
+- tenant.plan_id referencia plan.name "Free" o "Premium"; el API expone
+  "free" o "premium".
+- API key type "test" se persiste como environment "sandbox"; "live" como
+  "production". secret_hash guarda SHA-256; no persistir rawKey.
+- invitation_token guarda el hash del token; vence a las 72 horas.
+- Campos de compatibilidad ya incluidos: tenant.webhook_url, tenant.metadata,
+  app_user.name, api_key.masked_key, api_key.expires_at y api_key.updated_at.
+- La creacion guarda tenant, owner y llaves iniciales en una transaccion.
+  Hay indice unico case-insensitive para tenant.name; respetar el 409.
+- RLS usa app.current_tenant_id y app.global_access dentro de transacciones.
+  No quitar ese contexto ni conectar como un rol con BYPASSRLS.
+- No reintroducir la migracion legacy que creaba tenants/users/api_keys en
+  paralelo. Axl mantiene su rama intacta; integrar cambios de schema mediante
+  migraciones coordinadas.
+- El seed carga planes/roles y tambien actualiza precios/features. No volver a
+  ejecutarlo en Supabase sin revisar antes esos valores comerciales.
+
+TAREAS YA IMPLEMENTADAS
+- TSK-DEV1-101: POST /api/tenants; validacion, duplicados, persistencia Prisma
+  transaccional, owner invitado, llaves iniciales y evento tenant.creado.
+- TSK-BACK1-102: API keys criptograficamente aleatorias; hashes SHA-256 en DB,
+  rawKey de una sola entrega, listado enmascarado y revocacion.
+- TSK-BACK1-103: `tenant.creado` se guarda en outbox junto con el tenant; el
+  consumidor de Notifications genera el token, reintenta el correo tres veces
+  y deja eventos fallidos en DLQ. Mailpit en development, Resend configurable
+  para production. Mailpit UI: http://localhost:8025.
+- TSK-ARQ/BACK1-104: RabbitMQ, exchange durable, confirmaciones, colas durables,
+  DLQ y probes smoke para Identity, Payments y Adapters.
+- TSK-BACK1-105: /health revisa API, PostgreSQL y RabbitMQ; responde 200/503.
+
+PENDIENTES / ACUERDOS
+- Integrar autenticacion real (JWT/login) para que Front pueda llamar rutas
+  protegidas en production; mientras tanto solo funciona el header de desarrollo.
+- Front debe implementar formularios, estados de carga/error, pantalla de
+  activacion y vista de rawKey de una sola vez.
+- La latencia medida de Supabase desde este entorno fue aproximadamente 1 s;
+  supera el umbral de 300 ms configurado por TimingInterceptor. Revisar region,
+  pool y SLA antes de declarar cumplido RNF-01.
+- No se envio un POST valido de registro contra Supabase para evitar dejar datos
+  de prueba. Se verificaron migraciones, conexion, rutas y casos sin escritura.
+
+PRUEBAS EJECUTADAS
+- npm run build -w apps/api: OK.
+- npm test -w apps/api -- --config ./jest.config.cjs --runInBand: 32/32 OK.
+- prisma migrate status: schema al dia.
+- GET /health por HTTP: 200, Supabase up y RabbitMQ up.
+- Swagger: http://localhost:4000/api/docs responde 200.
