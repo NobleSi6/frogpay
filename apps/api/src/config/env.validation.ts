@@ -4,6 +4,7 @@ import {
     IsInt,
     IsNotEmpty,
     IsOptional,
+    Matches,
     IsString,
     MinLength,
     Min,
@@ -45,6 +46,13 @@ class EnvironmentVariables {
   JWT_SECRET!: string;
 
   @IsOptional()
+  @IsString({ message: 'CREDENTIALS_ENCRYPTION_KEY debe ser una cadena.' })
+  @Matches(/^[a-fA-F0-9]{64}$/, {
+    message: 'CREDENTIALS_ENCRYPTION_KEY debe contener 64 caracteres hexadecimales (32 bytes).',
+  })
+  CREDENTIALS_ENCRYPTION_KEY?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(60)
@@ -76,6 +84,10 @@ export function validateEnvironment(
       Object.values(error.constraints ?? {}),
     );
     throw new Error(`Configuración de entorno inválida: ${messages.join(' ')}`);
+  }
+
+  if (environment.NODE_ENV === 'production' && !environment.CREDENTIALS_ENCRYPTION_KEY) {
+    throw new Error('Configuración de entorno inválida: CREDENTIALS_ENCRYPTION_KEY es obligatoria en producción.');
   }
 
   return environment;
