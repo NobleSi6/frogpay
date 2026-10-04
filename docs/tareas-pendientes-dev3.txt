@@ -14,15 +14,16 @@ Ya presente en la rama:
 - El tenant indicado en la ruta solo se usa para PLATFORM_ADMIN.
 - Notifications consume tenant.creado y envia la invitacion; no depende del
   caso de uso de creacion del tenant.
+- Jest resuelve imports relativos .js hacia fuentes TypeScript mediante
+  moduleNameMapper en apps/api/jest.config.cjs.
+- npm test --workspace=@frogpay/api -- --runInBand pasa: 19 suites y 68 tests.
 - npm run build --workspace=@frogpay/api pasa.
 
 Pendiente:
 - Integrar develop en la rama de trabajo y resolver conflictos conservando
   todos los servicios definidos en docker-compose.yml.
 - Mantener una sola configuracion de Jest.
-- Hacer que npm test pase. En la revision actual hay suites que no resuelven
-  imports relativos con extension .js en planes y shared/auth; investigar el
-  resolver/configuracion de Jest y corregirlo sin ocultar pruebas.
+- Confirmar que develop no reintroduzca conflictos en la configuracion de Jest.
 - Volver a ejecutar las pruebas y el build despues de integrar develop.
 - Solicitar revision y merge del PR a develop.
 
