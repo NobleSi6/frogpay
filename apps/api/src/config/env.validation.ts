@@ -69,6 +69,24 @@ class EnvironmentVariables {
   @IsInt({ message: 'PRISMA_TX_MAX_WAIT_MS debe ser un entero.' })
   @Min(1, { message: 'PRISMA_TX_MAX_WAIT_MS debe ser mayor que cero.' })
   PRISMA_TX_MAX_WAIT_MS = 2000;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_HOST debe ser una cadena.' })
+  REDIS_HOST = 'localhost';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_PORT debe ser un entero.' })
+  REDIS_PORT = 6379;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_PASSWORD debe ser una cadena.' })
+  REDIS_PASSWORD?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_DB debe ser un entero.' })
+  REDIS_DB = 0;
 }
 
 export function validateEnvironment(

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { ProviderAdaptersModule } from '../provider-adapters/provider-adapters.module';
+import { CacheModule } from '../../shared/cache/cache.module';
 import { PaymentEventProbe } from './infrastructure/events/payment-event-probe';
 import { IdempotencyService } from './infrastructure/idempotency/idempotency.service';
 import { CreatePaymentUseCase } from './application/use-cases/create-payment.use-case';
@@ -10,7 +11,7 @@ import { PaymentsController } from './presentation/http/payments.controller';
 import { DashboardPaymentsController } from './presentation/http/dashboard-payments.controller';
 
 @Module({
-  imports: [EventBusModule, ProviderAdaptersModule],
+  imports: [EventBusModule, ProviderAdaptersModule, CacheModule],
   controllers: [PaymentsController, DashboardPaymentsController],
   providers: [
     PaymentEventProbe,

@@ -1,9 +1,11 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
+import { RedisService } from '../../../shared/cache/redis.service';
 import type { PaymentResponseDto } from '../../application/dto/payment-response.dto';
 
 export interface StoredIdempotencyRecord {
@@ -14,12 +16,31 @@ export interface StoredIdempotencyRecord {
 }
 
 export type AcquireLockResult =
-  | { isReplay: false }
+  | { isReplay: false; acquired: boolean }
   | { isReplay: true; response: PaymentResponseDto };
 
 @Injectable()
 export class IdempotencyService {
+  private readonly logger = new Logger(IdempotencyService.name);
+
+  // Fallback en memoria cuando Redis no está disponible
   private readonly memoryStore = new Map<string, StoredIdempotencyRecord>();
+  private useMemoryFallback = false;
+
+  constructor(private readonly redis: RedisService) {
+    // Escuchar errores de Redis para activar fallback
+    this.redis.on('error', () => {
+      if (!this.useMemoryFallback) {
+        this.logger.warn('Redis unavailable, switching to memory fallback for idempotency');
+        this.useMemoryFallback = true;
+      }
+    });
+
+    this.redis.on('connect', () => {
+      this.useMemoryFallback = false;
+      this.logger.log('Redis connected, using Redis for idempotency');
+    });
+  }
 
   /**
    * Calcula el hash canónico del cuerpo excluyendo paymentToken.
@@ -56,7 +77,60 @@ export class IdempotencyService {
     bodyHash: string,
   ): Promise<AcquireLockResult> {
     const redisKey = this.formatKey(tenantId, environment, key);
+
+    if (!this.useMemoryFallback) {
+      return this.acquireLockWithRedis(redisKey, bodyHash);
+    }
+
+    return this.acquireLockWithMemory(redisKey, bodyHash);
+  }
+
+  private async acquireLockWithRedis(
+    redisKey: string,
+    bodyHash: string,
+  ): Promise<AcquireLockResult> {
+    try {
+      const result = await this.redis.acquireIdempotencyLock(redisKey, bodyHash, 60);
+
+      if (result.isReplay && result.response) {
+        const response = JSON.parse(result.response) as PaymentResponseDto;
+        return { isReplay: true, response };
+      }
+
+      if (!result.acquired && !result.isReplay) {
+        // Otro proceso está procesando
+        throw new ConflictException({
+          code: 'idempotency_in_progress',
+          message: 'Ya existe una solicitud en proceso con esta clave de idempotencia.',
+          details: null,
+        });
+      }
+
+      return { isReplay: false, acquired: true };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === 'idempotency_key_reused') {
+        throw new UnprocessableEntityException({
+          code: 'idempotency_key_reused',
+          message: 'Esta clave de idempotencia ya se usó con una solicitud distinta.',
+          details: null,
+        });
+      }
+      // Error de Redis, cambiar a fallback
+      this.logger.warn('Redis error in acquireLock, switching to memory fallback');
+      this.useMemoryFallback = true;
+      return this.acquireLockWithMemory(redisKey, bodyHash);
+    }
+  }
+
+  private acquireLockWithMemory(
+    redisKey: string,
+    bodyHash: string,
+  ): AcquireLockResult {
     const now = Date.now();
+    const ttlMs = 60 * 1000; // 60 segundos para PROCESSING
 
     const existing = this.getValidRecord(redisKey, now);
 
@@ -85,14 +159,13 @@ export class IdempotencyService {
     }
 
     // Adquirir lock temporal con TTL de 60 segundos
-    const ttlMs = 60 * 1000;
     this.memoryStore.set(redisKey, {
       status: 'PROCESSING',
       bodyHash,
       expiresAt: now + ttlMs,
     });
 
-    return { isReplay: false };
+    return { isReplay: false, acquired: true };
   }
 
   /**
@@ -106,8 +179,24 @@ export class IdempotencyService {
     response: PaymentResponseDto,
   ): Promise<void> {
     const redisKey = this.formatKey(tenantId, environment, key);
-    const ttlMs = 24 * 60 * 60 * 1000; // 24 horas
 
+    if (!this.useMemoryFallback) {
+      try {
+        await this.redis.saveIdempotencyResult(
+          redisKey,
+          bodyHash,
+          JSON.stringify(response),
+          86400, // 24 horas
+        );
+        return;
+      } catch (error) {
+        this.logger.warn('Redis error in saveResult, using memory fallback');
+        this.useMemoryFallback = true;
+      }
+    }
+
+    // Fallback en memoria
+    const ttlMs = 24 * 60 * 60 * 1000; // 24 horas
     this.memoryStore.set(redisKey, {
       status: 'COMPLETED',
       bodyHash,
@@ -121,6 +210,18 @@ export class IdempotencyService {
    */
   public async releaseLock(tenantId: string, environment: string, key: string): Promise<void> {
     const redisKey = this.formatKey(tenantId, environment, key);
+
+    if (!this.useMemoryFallback) {
+      try {
+        await this.redis.releaseIdempotencyLock(redisKey);
+        return;
+      } catch (error) {
+        this.logger.warn('Redis error in releaseLock, using memory fallback');
+        this.useMemoryFallback = true;
+      }
+    }
+
+    // Fallback en memoria
     this.memoryStore.delete(redisKey);
   }
 
