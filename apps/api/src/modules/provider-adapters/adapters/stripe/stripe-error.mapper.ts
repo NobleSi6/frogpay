@@ -1,6 +1,6 @@
 import * as Stripe from 'stripe';
 import { ProviderResult } from '../../ports/payment-provider.port';
-import { AdapterErrorCode } from './stripe-payment-intent.mapper';
+import { AdapterErrorCode, toCatalogDeclineErrorCode } from './stripe-payment-intent.mapper';
 
 /**
  * Señal interna de que el reloj de pared del adapter se agotó antes de que
@@ -38,37 +38,35 @@ export function isTimeoutError(error: unknown): boolean {
  */
 export function mapStripeErrorToResult(error: unknown): ProviderResult {
   if (isTimeoutError(error)) {
-    return { outcome: 'timeout', errorCode: AdapterErrorCode.TIMEOUT };
+    return { outcome: 'timeout', errorCode: AdapterErrorCode.PROVIDER_TIMEOUT };
   }
 
   if (error instanceof Stripe.errors.StripeCardError) {
-    return { outcome: 'declined', errorCode: error.decline_code ?? error.code ?? 'card_declined' };
+    return {
+      outcome: 'declined',
+      errorCode: toCatalogDeclineErrorCode(error.decline_code ?? error.code),
+    };
   }
 
   if (error instanceof Stripe.errors.StripeInvalidRequestError) {
-    return { outcome: 'error', errorCode: error.code ?? 'invalid_request_error' };
+    return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
   }
 
   if (error instanceof Stripe.errors.StripeAuthenticationError) {
-    return { outcome: 'error', errorCode: error.code ?? 'authentication_error' };
+    return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
   }
 
   if (error instanceof Stripe.errors.StripePermissionError) {
-    return { outcome: 'error', errorCode: error.code ?? 'permission_error' };
+    return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
   }
 
   if (error instanceof Stripe.errors.StripeRateLimitError) {
-    return { outcome: 'error', errorCode: error.code ?? 'rate_limit_error' };
+    return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
   }
 
   if (error instanceof Stripe.errors.StripeError) {
-    return { outcome: 'error', errorCode: error.code ?? error.type ?? 'stripe_error' };
+    return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
   }
 
-  const fallbackCode = (error as { code?: unknown }).code;
-  if (error instanceof Error && typeof fallbackCode === 'string') {
-    return { outcome: 'error', errorCode: fallbackCode };
-  }
-
-  return { outcome: 'error', errorCode: AdapterErrorCode.UNEXPECTED_ERROR };
+  return { outcome: 'error', errorCode: AdapterErrorCode.PROVIDER_UNAVAILABLE };
 }

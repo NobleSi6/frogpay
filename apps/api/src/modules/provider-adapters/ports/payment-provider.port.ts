@@ -8,6 +8,10 @@
  */
 export const PAYMENT_PROVIDER_PORT = Symbol('PAYMENT_PROVIDER_PORT');
 
+/**
+ * La capa HTTP debe validar amount y currency con el DTO antes de llamar
+ * `authorize()`. El adapter asume que esos campos ya fueron validados.
+ */
 export interface AuthorizeInput {
   /** Montodecimal como cadena, por ejemplo `"150.00"`. */
   amount: string;
