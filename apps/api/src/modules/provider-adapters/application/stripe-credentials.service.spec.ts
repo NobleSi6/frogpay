@@ -68,6 +68,22 @@ describe('StripeCredentialsService', () => {
     expect(JSON.stringify(result)).not.toContain(input.secretKey);
   });
 
+  it('returns raw decrypted credentials for internal adapter usage', async () => {
+    await service.save(tenantId, 'OWNER', 'sandbox', input);
+
+    const decrypted = await service.getDecrypted(tenantId, 'sandbox');
+
+    expect(decrypted).toEqual({
+      publishableKey: input.publishableKey,
+      secretKey: input.secretKey,
+    });
+  });
+
+  it('returns null when querying decrypted credentials for unconfigured tenant', async () => {
+    const decrypted = await service.getDecrypted('unconfigured-tenant', 'sandbox');
+    expect(decrypted).toBeNull();
+  });
+
   it('rejects non-owners and keys from the wrong environment', async () => {
     await expect(service.save(tenantId, 'ADMIN', 'sandbox', input)).rejects.toBeInstanceOf(
       ForbiddenException,

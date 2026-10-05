@@ -113,6 +113,36 @@ export class StripeCredentialsService {
     });
   }
 
+  async getDecrypted(
+    tenantId: string,
+    environment: StripeEnvironment,
+  ): Promise<StripeCredentialsInput | null> {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const provider = await tx.provider.findUnique({
+        where: { code: 'stripe' },
+        select: { id: true },
+      });
+      if (!provider) return null;
+
+      const credential = await tx.tenant_provider_credential.findUnique({
+        where: {
+          tenant_id_provider_id_environment: {
+            tenant_id: tenantId,
+            provider_id: provider.id,
+            environment,
+          },
+        },
+        select: { credentials_encrypted: true, is_active: true },
+      });
+
+      if (!credential || !credential.is_active) {
+        return null;
+      }
+
+      return this.decryptCredentials(credential.credentials_encrypted);
+    });
+  }
+
   private assertOwner(role: string): void {
     if (role !== 'OWNER') {
       throw new ForbiddenException('Solo el propietario del tenant puede administrar credenciales.');

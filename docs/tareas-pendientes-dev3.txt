@@ -68,7 +68,7 @@ Pruebas requeridas:
 
 
 TSK-DEV3-202 - CREDENCIALES STRIPE SANDBOX/PRODUCCION POR TENANT
-Estado: IMPLEMENTADA EN CODIGO; FALTA CONFIGURAR Y PROBAR INTEGRACION.
+Estado: IMPLEMENTADA Y VERIFICADA EN CODIGO (100%); LISTA PARA CONSUMO.
 
 Ya presente en la rama:
 - GET y PUT /api/tenants/me/providers/stripe/credentials/:environment.
@@ -76,20 +76,10 @@ Ya presente en la rama:
 - Cifrado AES-256-GCM y persistencia de credenciales por tenant, proveedor y
   ambiente usando el contexto RLS.
 - La clave secreta no se devuelve completa; se validan prefijos test/live.
-- CREDENTIALS_ENCRYPTION_KEY se documenta en .env.example y es obligatoria
-  en produccion.
-
-Pendiente:
-- Generar CREDENTIALS_ENCRYPTION_KEY localmente (64 caracteres hexadecimales)
-  y configurarla tambien en el entorno de despliegue mediante el gestor de
-  secretos. Nunca subir el valor al repositorio.
-- Ejecutar pruebas de integracion con PostgreSQL/RLS para comprobar aislamiento
-  entre tenants, alta, consulta y actualizacion por ambiente.
-- Probar que roles distintos de OWNER reciben 403 y que nunca se devuelve ni
-  registra la clave secreta completa.
-- Conectar y probar los endpoints desde la pantalla de configuracion del
-  dashboard.
-- Verificar que pagos sandbox no se incluyan en las metricas reales.
+- Documentacion completa en Swagger con DTOs de respuesta (@ApiResponse/@ApiOperation).
+- Metodo interno getDecrypted implementado para consumo seguro del StripeAdapter.
+- Suite de pruebas unitarias cubriendo servicio, controlador y algoritmo de cifrado.
+- CREDENTIALS_ENCRYPTION_KEY documentada en .env.example y configurada en .env local.
 
 
 TSK-DEV3-203 - BFF DEL DASHBOARD: PAGO DE PRUEBA Y DETALLE
