@@ -4,6 +4,7 @@ import {
     IsInt,
     IsNotEmpty,
     IsOptional,
+    Matches,
     IsString,
     MinLength,
     Min,
@@ -45,6 +46,13 @@ class EnvironmentVariables {
   JWT_SECRET!: string;
 
   @IsOptional()
+  @IsString({ message: 'CREDENTIALS_ENCRYPTION_KEY debe ser una cadena.' })
+  @Matches(/^[a-fA-F0-9]{64}$/, {
+    message: 'CREDENTIALS_ENCRYPTION_KEY debe contener 64 caracteres hexadecimales (32 bytes).',
+  })
+  CREDENTIALS_ENCRYPTION_KEY?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(60)
@@ -61,6 +69,24 @@ class EnvironmentVariables {
   @IsInt({ message: 'PRISMA_TX_MAX_WAIT_MS debe ser un entero.' })
   @Min(1, { message: 'PRISMA_TX_MAX_WAIT_MS debe ser mayor que cero.' })
   PRISMA_TX_MAX_WAIT_MS = 2000;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_HOST debe ser una cadena.' })
+  REDIS_HOST = 'localhost';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_PORT debe ser un entero.' })
+  REDIS_PORT = 6379;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_PASSWORD debe ser una cadena.' })
+  REDIS_PASSWORD?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_DB debe ser un entero.' })
+  REDIS_DB = 0;
 }
 
 export function validateEnvironment(
@@ -76,6 +102,10 @@ export function validateEnvironment(
       Object.values(error.constraints ?? {}),
     );
     throw new Error(`Configuración de entorno inválida: ${messages.join(' ')}`);
+  }
+
+  if (environment.NODE_ENV === 'production' && !environment.CREDENTIALS_ENCRYPTION_KEY) {
+    throw new Error('Configuración de entorno inválida: CREDENTIALS_ENCRYPTION_KEY es obligatoria en producción.');
   }
 
   return environment;

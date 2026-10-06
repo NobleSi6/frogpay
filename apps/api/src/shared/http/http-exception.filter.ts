@@ -1,60 +1,96 @@
 import {
   ArgumentsHost,
+  BadRequestException,
   Catch,
   ExceptionFilter,
-  HttpException,
-  HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { randomUUID } from 'node:crypto';
+import { ERROR_CATALOG } from './errors/error-catalog';
+import { IdempotencyInProgressError } from './errors/idempotency-in-progress-error';
+import { IdempotencyKeyReusedError } from './errors/idempotency-key-reused-error';
+import { PlanLimitExceededError } from './errors/plan-limit-exceeded-error';
+import { ValidationError } from './errors/validation-error';
+import { RequestWithId } from './middleware/request-id.middleware';
+
+type CatalogException =
+  | ValidationError
+  | IdempotencyInProgressError
+  | IdempotencyKeyReusedError
+  | PlanLimitExceededError;
+
+type ErrorPayload = {
+  code: string;
+  message: string;
+  details: unknown;
+  requestId: string;
+};
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse<Response>();
-    const request = ctx.getRequest<Request>();
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const context = host.switchToHttp();
+    const response = context.getResponse<Response>();
+    const request = context.getRequest<RequestWithId>();
+    const requestId = request.requestId ?? randomUUID();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | string[] = 'Error interno del servidor';
-    let errorName = 'InternalServerError';
+    let status = 500;
+    let payload: ErrorPayload;
 
-    if (exception instanceof HttpException) {
+    if (this.isCatalogException(exception)) {
       status = exception.getStatus();
+      payload = {
+        code: exception.code,
+        message: exception.message,
+        details: exception.details,
+        requestId,
+      };
+      this.logger.warn(`${exception.code}: ${exception.message} (requestId=${requestId})`);
+    } else if (exception instanceof BadRequestException) {
       const exceptionResponse = exception.getResponse();
+      const details =
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null &&
+        'message' in exceptionResponse
+          ? exceptionResponse.message
+          : exceptionResponse;
 
-      if (typeof exceptionResponse === 'string') {
-        message = exceptionResponse;
-      } else if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
-        const res = exceptionResponse as Record<string, unknown>;
-        message = (res.message as string | string[]) || exception.message;
-        errorName = (res.error as string) || exception.name;
-      }
-    } else if (exception instanceof Error) {
-      message = exception.message;
-      errorName = exception.name;
-    }
-
-    const errorPayload = {
-      statusCode: status,
-      error: errorName,
-      message,
-      timestamp: new Date().toISOString(),
-      path: request.url,
-      method: request.method,
-    };
-
-    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+      status = ERROR_CATALOG.validation_error.httpStatus;
+      payload = {
+        code: ERROR_CATALOG.validation_error.code,
+        message: ERROR_CATALOG.validation_error.message,
+        details: details ?? null,
+        requestId,
+      };
+    } else {
+      payload = {
+        code: 'internal_error',
+        message: 'Error interno del servidor',
+        details: null,
+        requestId,
+      };
+      const errorDescription =
+        exception instanceof Error
+          ? `${exception.name}: ${exception.message}`
+          : String(exception);
       this.logger.error(
-        `[${request.method}] ${request.url} - Error ${status}: ${JSON.stringify(message)}`,
+        `Unhandled exception (requestId=${requestId}): ${errorDescription}`,
         exception instanceof Error ? exception.stack : undefined,
       );
-    } else {
-      this.logger.warn(`[${request.method}] ${request.url} - ${status} ${JSON.stringify(message)}`);
     }
 
-    response.status(status).json(errorPayload);
+    response.status(status).json(payload);
+  }
+
+  private isCatalogException(exception: unknown): exception is CatalogException {
+    return (
+      exception instanceof ValidationError ||
+      exception instanceof IdempotencyInProgressError ||
+      exception instanceof IdempotencyKeyReusedError ||
+      exception instanceof PlanLimitExceededError
+    );
   }
 }

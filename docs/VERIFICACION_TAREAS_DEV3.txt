@@ -1,0 +1,160 @@
+=================================================================
+VERIFICACIÓN TAREAS DEV 3 - SPRINT 2
+=================================================================
+
+=================================================================
+TSK-DEV3-200 - CORRECCIONES DEL PR DE IDENTIDAD Y TENANTS (ARRASTRE)
+=================================================================
+
+Estado: PARCIALMENTE IMPLEMENTADA
+
+Pendiente:
+1. Integrar develop en la rama de trabajo
+2. Resolver conflictos conservando docker-compose.yml
+3. Mantener una sola configuración de Jest
+4. Confirmar que develop no reintroduzca conflictos en Jest
+5. Volver a ejecutar pruebas y build
+6. Solicitar revision y merge del PR a develop
+
+COMANDOS PARA VERIFICAR:
+------------------------
+# 1. Verificar estado actual
+git status
+git log --oneline -5
+
+# 2. Traer cambios de develop
+git checkout develop
+git pull origin develop
+
+# 3. Volver a tu rama y merge
+git checkout feature/back2-jean-s2
+git merge develop
+# Resolver conflictos si los hay
+
+# 4. Verificar Jest (debe haber UNO solo)
+find . -name "jest.config.*" -type f
+
+# 5. Verificar build
+npm run build --workspace=@frogpay/api
+
+# 6. Verificar pruebas
+npm test --workspace=@frogpay/api -- --runInBand
+
+# 7. Verificar docker-compose.yml
+cat docker-compose.yml | grep -A5 "services:"
+
+
+=================================================================
+TSK-DEV3-201 - POST /v1/payments CON IDEMPOTENCY-KEY
+=================================================================
+
+Estado: IMPLEMENTADA (con Redis y fallback)
+
+VERIFICACIÓN:
+-------------
+1. Configuración Redis en .env:
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
+   REDIS_PASSWORD=
+   REDIS_DB=0
+
+2. Redis corriendo:
+   docker compose up -d redis
+   redis-cli ping (debe responder PONG)
+
+3. Build exitoso:
+   npm run build --workspace=@frogpay/api
+
+4. Prueba del endpoint:
+   Ver archivo: VERIFICACION_TSK-DEV3-201.txt
+
+5. Pruebas unitarias:
+   npm test --workspace=@frogpay/api -- create-payment
+
+6. Verificar en Redis:
+   redis-cli KEYS "idempotency:*"
+
+
+=================================================================
+TSK-DEV3-202 - CREDENCIALES STRIPE SANDBOX/PRODUCCION
+=================================================================
+
+Estado: IMPLEMENTADA Y VERIFICADA (100%)
+
+ENDPOINTS VERIFICADOS:
+---------------------
+GET  /api/tenants/me/providers/stripe/credentials/:environment
+PUT  /api/tenants/me/providers/stripe/credentials/:environment
+
+VERIFICACIÓN:
+-------------
+1. Acceder como Owner/Admin
+2. POST con credenciales de Stripe:
+   {
+     "publishableKey": "pk_test_xxx",
+     "secretKey": "sk_test_xxx"
+   }
+
+3. Response debe devolver:
+   - environment: "sandbox" o "production"
+   - configured: true
+   - publishableKey: "pk_test_xxx"
+   - secretKeyMasked: "sk_test_...xxxx" (oculto)
+
+4. Credenciales cifradas en BD con AES-256-GCM
+5. Prefijos validados (test/live según environment)
+
+
+=================================================================
+TSK-DEV3-203 - BFF DEL DASHBOARD
+=================================================================
+
+Estado: IMPLEMENTADA (depende de TSK-DEV3-201)
+
+ENDPOINTS:
+----------
+POST /api/dashboard/payments/test
+GET  /api/dashboard/payments/:id
+
+VERIFICACIÓN:
+-------------
+1. POST /dashboard/payments/test:
+   - Header: Authorization: Bearer <JWT de Owner>
+   - Header: Idempotency-Key: <UUID>
+   - Body: { amount, currency, paymentMethod, merchantReference, paymentToken }
+   - Esperado: 201 Created, ambiente FORZADO a sandbox
+   - Verificar que use tenantId del JWT (no del body)
+
+2. GET /dashboard/payments/:id:
+   - Header: Authorization: Bearer <JWT de Owner>
+   - Esperado: 200 OK con:
+     * estado, monto, moneda, comisión, neto
+     * método, ambiente, referencia, fechas
+     * statusHistory (historial ordenado)
+
+3. Verificar que:
+   - Owner solo pueda ver sus propios pagos
+   - No se puede consultar pago de otro tenant (404)
+   - El endpoint de prueba SIEMPRE crea en sandbox
+
+
+=================================================================
+CHECKLIST GENERAL
+=================================================================
+
+[ ] TSK-DEV3-200: Merge con develop completado
+[ ] TSK-DEV3-200: Jest config unificado
+[ ] TSK-DEV3-200: npm test y npm run build pasan
+[ ] TSK-DEV3-201: Redis configurado y funcionando
+[ ] TSK-DEV3-201: Endpoint POST /v1/payments funciona
+[ ] TSK-DEV3-201: Idempotencia (201, 200, 409, 422)
+[ ] TSK-DEV3-201: Pruebas unitarias pasan
+[ ] TSK-DEV3-202: Credenciales Stripe funcionan
+[ ] TSK-DEV3-202: Cifrado AES-256-GCM activo
+[ ] TSK-DEV3-203: POST /dashboard/payments/test funciona
+[ ] TSK-DEV3-203: GET /dashboard/payments/:id funciona
+[ ] TSK-DEV3-203: Sandbox forzado en dashboard
+
+=================================================================
+FIN
+=================================================================
