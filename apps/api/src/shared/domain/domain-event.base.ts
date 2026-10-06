@@ -4,11 +4,19 @@ export abstract class DomainEvent<T = unknown> {
   public abstract readonly eventName: string;
   public readonly aggregateId: string;
   public readonly payload: T;
+  public readonly tenantId?: string | null;
 
-  constructor(aggregateId: string, payload: T, eventId?: string, occurredOn?: Date) {
+  constructor(
+    aggregateId: string,
+    payload: T,
+    eventId?: string,
+    occurredOn?: Date,
+    tenantId?: string | null,
+  ) {
     this.eventId = eventId ?? crypto.randomUUID();
     this.occurredOn = occurredOn ?? new Date();
     this.aggregateId = aggregateId;
     this.payload = payload;
+    this.tenantId = tenantId;
   }
 }
