@@ -7,6 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import {
@@ -58,7 +59,7 @@ export class CreatePaymentUseCase {
 
     try {
       // 2. Transacción 1 (Local): Validar plan, registrar pago en 'pending' y outbox 'pago.creado'
-      const { paymentId, providerId, paymentMethodId, commissionAmount, netAmount } =
+      const { paymentId, commissionAmount, netAmount } =
         await this.tenantContext.withTenant(tenantId, async (tx) => {
           // Verificar tenant y plan
           const tenant = await tx.tenant.findUnique({
@@ -173,8 +174,6 @@ export class CreatePaymentUseCase {
 
           return {
             paymentId: payment.id,
-            providerId: provider.id,
-            paymentMethodId: paymentMethod.id,
             commissionAmount: calculatedCommission.toFixed(2),
             netAmount: calculatedNet.toFixed(2),
           };
@@ -236,7 +235,7 @@ export class CreatePaymentUseCase {
 
         // Registrar evento de outbox según el resultado final
         let outboxEventType = 'pago.aprobado';
-        let outboxPayload: Record<string, unknown>;
+        let outboxPayload: Prisma.InputJsonObject;
 
         if (isApproved) {
           outboxEventType = 'pago.aprobado';
@@ -249,7 +248,7 @@ export class CreatePaymentUseCase {
             merchantReference: dto.merchantReference,
             commissionAmount,
             netAmount,
-            providerTransactionId: providerResult.providerTransactionId,
+            providerTransactionId: providerResult.providerTransactionId ?? null,
           };
 
           // Actualizar consumo de plan (tenant_plan_usage)

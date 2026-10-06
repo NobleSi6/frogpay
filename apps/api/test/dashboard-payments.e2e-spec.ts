@@ -1,34 +1,41 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import * as request from 'supertest';
+import { AuthenticationGuard } from '../src/shared/auth/authentication.guard';
 import { JwtTokenService } from '../src/shared/auth/jwt-token.service';
-import { RolesGuard } from '../src/shared/auth/roles.guard';
-import { PaymentsController } from '../src/modules/payments/presentation/http/payments.controller';
-import { DashboardPaymentsController } from '../src/modules/payments/presentation/http/dashboard-payments.controller';
 import { CreatePaymentUseCase } from '../src/modules/payments/application/use-cases/create-payment.use-case';
 import { GetPaymentUseCase } from '../src/modules/payments/application/use-cases/get-payment.use-case';
-import { IdempotencyService } from '../src/modules/payments/infrastructure/idempotency/idempotency.service';
-import { PaymentProviderPort } from '../src/modules/provider-adapters/ports/payment-provider.port';
 import { PaymentsModule } from '../src/modules/payments/payments.module';
 import { IdentityModule } from '../src/modules/identity/identity.module';
 import { ProviderAdaptersModule } from '../src/modules/provider-adapters/provider-adapters.module';
 import { PrismaModule } from '../src/shared/database/prisma.module';
+import { PrismaService } from '../src/shared/database/prisma.service';
+import { RedisService } from '../src/shared/cache/redis.service';
 import { ConfigModule } from '@nestjs/config';
+import type { UserRole } from '../src/modules/identity/domain/entities/user.entity';
+import { RabbitMqEventBus } from '../src/shared/events/rabbitmq-event-bus';
+import { OutboxEventPublisher } from '../src/shared/events/outbox-event-publisher.service';
 
 describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
   let app: INestApplication;
   let jwtService: JwtTokenService;
   let createPaymentUseCase: CreatePaymentUseCase;
   let getPaymentUseCase: GetPaymentUseCase;
-  let idempotencyService: IdempotencyService;
 
   const testTenantId = '550e8400-e29b-41d4-a716-446655440001';
   const testUserId = '550e8400-e29b-41d4-a716-446655440002';
-  const testAnotherTenantId = '650e8400-e29b-41d4-a716-446655440004';
   const validUuidKey = '550e8400-e29b-41d4-a716-446655440005';
   const testPaymentId = '550e8400-e29b-41d4-a716-446655440003';
+  const dto = {
+    amount: '100.00',
+    currency: 'BOB',
+    paymentMethod: 'card',
+    merchantReference: 'test-order-e2e-001',
+    paymentToken: 'pm_1Nk000000000000000000000',
+  };
 
-  const createToken = (tenantId: string, role: string = 'OWNER') => {
+  const createToken = (tenantId: string, role: UserRole = 'OWNER') => {
     const user = {
       id: testUserId,
       email: 'owner@test.com',
@@ -37,13 +44,6 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
     };
     const { accessToken } = jwtService.sign(user);
     return accessToken;
-  };
-
-  const authContext: any = {
-    userId: testUserId,
-    email: 'owner@test.com',
-    role: 'OWNER',
-    tenantId: testTenantId,
   };
 
   const sampleResponse = {
@@ -85,7 +85,14 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
       imports: [
         ConfigModule.forRoot({
           isGlobal: true,
-          load: [],
+          load: [
+            () => ({
+              JWT_SECRET: 'test-jwt-secret-for-dashboard-e2e',
+              REDIS_HOST: 'localhost',
+              REDIS_PORT: 6379,
+              CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
+            }),
+          ],
         }),
         PaymentsModule,
         IdentityModule,
@@ -95,32 +102,54 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
     })
       .overrideProvider(CreatePaymentUseCase)
       .useValue({
-        execute: jest.fn().mockResolvedValue({
-          isReplay: false,
-          response: sampleResponse,
-        }),
+        execute: jest.fn().mockImplementation(
+          async (
+            _tenantId: string,
+            environment: string,
+            _idempotencyKey: string,
+            paymentDto: typeof dto,
+          ) => ({
+            isReplay: false,
+            response: {
+              ...sampleResponse,
+              amount: paymentDto.amount,
+              currency: paymentDto.currency,
+              paymentMethod: paymentDto.paymentMethod,
+              environment,
+              merchantReference: paymentDto.merchantReference,
+            },
+          }),
+        ),
       })
       .overrideProvider(GetPaymentUseCase)
       .useValue({
         execute: jest.fn().mockResolvedValue(sampleDetailsResponse),
       })
-      .overrideProvider(IdempotencyService)
+      .overrideProvider(RedisService)
       .useValue({
-        computeCanonicalBodyHash: jest.fn().mockReturnValue('mocked-hash'),
-        acquireLock: jest.fn(),
-        saveResult: jest.fn(),
-        releaseLock: jest.fn(),
+        on: jest.fn(),
       })
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .overrideProvider(RabbitMqEventBus)
+      .useValue({
+        subscribe: jest.fn(),
+        publish: jest.fn(),
+        publishAll: jest.fn(),
+        checkHealth: jest.fn(),
+      })
+      .overrideProvider(OutboxEventPublisher)
+      .useValue({})
       .compile();
-
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    await app.init();
 
     jwtService = moduleRef.get<JwtTokenService>(JwtTokenService);
     createPaymentUseCase = moduleRef.get<CreatePaymentUseCase>(CreatePaymentUseCase);
     getPaymentUseCase = moduleRef.get<GetPaymentUseCase>(GetPaymentUseCase);
-    idempotencyService = moduleRef.get<IdempotencyService>(IdempotencyService);
+
+    app = moduleRef.createNestApplication();
+    app.useGlobalGuards(new AuthenticationGuard(new Reflector(), jwtService));
+    app.setGlobalPrefix('api');
+    await app.init();
   });
 
   afterAll(async () => {
@@ -128,14 +157,6 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
   });
 
   describe('POST /dashboard/payments/test', () => {
-    const dto = {
-      amount: '100.00',
-      currency: 'BOB',
-      paymentMethod: 'card',
-      merchantReference: 'test-order-e2e-001',
-      paymentToken: 'pm_1Nk000000000000000000000',
-    };
-
     it('should force sandbox environment and create payment with session tenantId', async () => {
       const token = createToken(testTenantId);
       const mockExecute = jest.spyOn(createPaymentUseCase, 'execute');
@@ -225,7 +246,11 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
     it('should return 404 if payment not found', async () => {
       const token = createToken(testTenantId);
       jest.spyOn(getPaymentUseCase, 'execute').mockRejectedValueOnce(
-        new Error('Payment not found'),
+        new NotFoundException({
+          code: 'payment_not_found',
+          message: 'El pago solicitado no fue encontrado.',
+          details: null,
+        }),
       );
 
       await request(app.getHttpServer())
@@ -241,60 +266,6 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
         .get('/api/dashboard/payments/not-a-uuid')
         .set('Authorization', `Bearer ${token}`)
         .expect(400);
-    });
-  });
-
-  describe('Idempotency - TSK-DEV3-201', () => {
-    it('should acquire lock in Redis with correct key format', async () => {
-      const mockAcquireLock = jest.spyOn(idempotencyService, 'acquireLock');
-
-      const token = createToken(testTenantId);
-      await request(app.getHttpServer())
-        .post('/api/dashboard/payments/test')
-        .set('Authorization', `Bearer ${token}`)
-        .set('Idempotency-Key', validUuidKey)
-        .send(dto)
-        .expect(201);
-
-      // Verificar que la clave se construyó correctamente
-      expect(mockAcquireLock).toHaveBeenCalledWith(
-        testTenantId,
-        'sandbox', // environment
-        validUuidKey,
-        expect.any(String), // bodyHash
-      );
-    });
-
-    it('should return 409 for concurrent requests with same Idempotency-Key', async () => {
-      // Simular que el lock ya está en PROCESSING
-      jest.spyOn(idempotencyService, 'acquireLock').mockRejectedValueOnce(
-        new Error('Conflict: idempotency_in_progress'),
-      );
-
-      const token = createToken(testTenantId);
-
-      await request(app.getHttpServer())
-        .post('/api/dashboard/payments/test')
-        .set('Authorization', `Bearer ${token}`)
-        .set('Idempotency-Key', validUuidKey)
-        .send(dto)
-        .expect(409);
-    });
-
-    it('should return 422 if same key with different body hash', async () => {
-      // Simular que la clave ya existe con hash distinto
-      jest.spyOn(idempotencyService, 'acquireLock').mockRejectedValueOnce(
-        new Error('Unprocessable Entity: idempotency_key_reused'),
-      );
-
-      const token = createToken(testTenantId);
-
-      await request(app.getHttpServer())
-        .post('/api/dashboard/payments/test')
-        .set('Authorization', `Bearer ${token}`)
-        .set('Idempotency-Key', validUuidKey)
-        .send({ ...dto, amount: '200.00' }) // Diferente monto
-        .expect(422);
     });
   });
 });

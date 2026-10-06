@@ -17,7 +17,11 @@ export class GetPaymentUseCase {
           },
         },
         include: {
-          payment_method: true,
+          provider: {
+            include: {
+              payment_method: true,
+            },
+          },
           payment_status_history: {
             orderBy: { created_at: 'asc' },
           },
@@ -37,7 +41,7 @@ export class GetPaymentUseCase {
         status: payment.status as PaymentStatus,
         amount: String(payment.amount),
         currency: payment.currency.trim(),
-        paymentMethod: payment.payment_method.code,
+        paymentMethod: payment.provider.payment_method.code,
         environment: payment.environment === 'production' ? 'production' : 'sandbox',
         merchantReference: payment.merchant_reference ?? '',
         commissionAmount: payment.commission_amount ? String(payment.commission_amount) : null,

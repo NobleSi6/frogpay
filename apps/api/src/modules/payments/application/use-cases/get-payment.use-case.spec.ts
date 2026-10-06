@@ -32,7 +32,7 @@ describe('GetPaymentUseCase', () => {
                 error_code: null,
                 created_at: new Date('2026-10-01T14:32:10.000Z'),
                 updated_at: new Date('2026-10-01T14:32:11.000Z'),
-                payment_method: { code: 'card' },
+                provider: { payment_method: { code: 'card' } },
                 payment_status_history: [
                   {
                     previous_status: null,

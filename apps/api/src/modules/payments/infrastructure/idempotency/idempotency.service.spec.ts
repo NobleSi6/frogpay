@@ -36,14 +36,11 @@ describe('IdempotencyService', () => {
   beforeEach(() => {
     // Mock de RedisService
     redisMock = {
-      on: jest.fn((event: string, callback: () => void) => {
-        if (event === 'error') {
-          (redisMock.on as jest.Mock).mockImplementation(() => {
-            // Emular que Redis no está disponible al inicio
-          });
-        }
+      on: jest.fn(),
+      acquireIdempotencyLock: jest.fn().mockResolvedValue({
+        acquired: true,
+        isReplay: false,
       }),
-      acquireIdempotencyLock: jest.fn(),
       saveIdempotencyResult: jest.fn(),
       releaseIdempotencyLock: jest.fn(),
     };

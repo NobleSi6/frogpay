@@ -21,7 +21,7 @@ export class StripeAdapter implements PaymentProviderPort {
     );
 
     // 1. Obtener credenciales descifradas del tenant si están configuradas
-    const credentials = await this.credentialsService.getDecrypted(
+    await this.credentialsService.getDecrypted(
       command.tenantId,
       command.environment,
     );

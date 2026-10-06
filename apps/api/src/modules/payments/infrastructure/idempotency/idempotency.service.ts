@@ -5,7 +5,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import * as crypto from 'node:crypto';
-import { RedisService } from '../../../shared/cache/redis.service';
+import { RedisService } from '../../../../shared/cache/redis.service';
 import type { PaymentResponseDto } from '../../application/dto/payment-response.dto';
 
 export interface StoredIdempotencyRecord {
@@ -191,7 +191,7 @@ export class IdempotencyService {
           86400, // 24 horas
         );
         return;
-      } catch (error) {
+      } catch {
         this.logger.warn('Redis error in saveResult, using memory fallback');
         this.useMemoryFallback = true;
       }
@@ -217,7 +217,7 @@ export class IdempotencyService {
       try {
         await this.redis.releaseIdempotencyLock(redisKey);
         return;
-      } catch (error) {
+      } catch {
         this.logger.warn('Redis error in releaseLock, using memory fallback');
         this.useMemoryFallback = true;
       }

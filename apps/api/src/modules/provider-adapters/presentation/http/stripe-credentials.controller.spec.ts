@@ -10,7 +10,6 @@ describe('StripeCredentialsController', () => {
 
   const mockContext: AuthenticatedTenantContext = {
     userId: 'user-123',
-    email: 'owner@tenant.com',
     role: 'OWNER',
     tenantId: 'tenant-456',
   };

@@ -4,7 +4,6 @@ import {
   Controller,
   Get,
   Headers,
-  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -27,6 +26,7 @@ import { CreatePaymentUseCase } from '../../application/use-cases/create-payment
 import { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
 import { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import { PaymentResponseDto } from '../../application/dto/payment-response.dto';
+import { PaymentDetailsResponseDto } from '../../application/dto/payment-details.dto';
 import { PaymentErrorResponseDto } from '../../application/dto/payment-error.dto';
 
 @ApiTags('Pagos Públicos (API)')
@@ -130,7 +130,7 @@ export class PaymentsController {
   @ApiResponse({
     status: 200,
     description: 'Pago encontrado exitosamente.',
-    type: PaymentResponseDto,
+    type: PaymentDetailsResponseDto,
   })
   @ApiResponse({
     status: 404,
@@ -140,7 +140,7 @@ export class PaymentsController {
   async getById(
     @CurrentApiKeyContext() apiKeyContext: ApiKeyContext,
     @Param('id') paymentId: string,
-  ): Promise<PaymentResponseDto> {
+  ): Promise<PaymentDetailsResponseDto> {
     if (!isUUID(paymentId)) {
       throw new BadRequestException({
         code: 'validation_error',

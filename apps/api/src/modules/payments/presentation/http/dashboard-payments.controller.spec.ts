@@ -14,13 +14,12 @@ describe('DashboardPaymentsController', () => {
 
   const authContext: AuthenticatedTenantContext = {
     userId: 'user-123',
-    email: 'owner@tenant.com',
     role: 'OWNER',
     tenantId: 'tenant-456',
   };
 
   const validUuidKey = '550e8400-e29b-41d4-a716-446655440000';
-  const validPaymentId = '6f1b2e34-5678-90ab-cdef-1234567890ab';
+  const validPaymentId = '6f1b2e34-5678-40ab-8def-1234567890ab';
 
   const validDto: CreatePaymentDto = {
     amount: '250.00',

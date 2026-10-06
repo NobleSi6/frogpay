@@ -26,7 +26,7 @@ export class RedisService extends Redis implements OnModuleInit, OnModuleDestroy
     try {
       await this.ping();
       this.logger.log('Redis connection established');
-    } catch (error) {
+    } catch {
       this.logger.warn('Redis unavailable, idempotency will use memory fallback');
     }
   }
@@ -139,7 +139,7 @@ export class RedisService extends Redis implements OnModuleInit, OnModuleDestroy
   async releaseIdempotencyLock(key: string): Promise<void> {
     try {
       await this.del(key);
-    } catch (error) {
+    } catch {
       this.logger.warn('Redis error in releaseIdempotencyLock');
     }
   }
@@ -151,7 +151,7 @@ export class RedisService extends Redis implements OnModuleInit, OnModuleDestroy
     try {
       const data = await this.hgetall(key);
       return data.response || null;
-    } catch (error) {
+    } catch {
       this.logger.warn('Redis error in getIdempotencyResponse');
       return null;
     }

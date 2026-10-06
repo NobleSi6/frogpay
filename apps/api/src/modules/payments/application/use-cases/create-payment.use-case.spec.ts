@@ -1,12 +1,12 @@
 import {
   ConflictException,
   HttpException,
-  HttpStatus,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { CreatePaymentUseCase } from './create-payment.use-case';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
+import type { RedisService } from '../../../../shared/cache/redis.service';
 import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import type { PaymentProviderPort } from '../../../provider-adapters/ports/payment-provider.port';
 import type { CreatePaymentDto } from '../dto/create-payment.dto';
@@ -50,7 +50,40 @@ describe('CreatePaymentUseCase', () => {
   let planUsage: any;
 
   beforeEach(() => {
-    idempotency = new IdempotencyService();
+    const records = new Map<
+      string,
+      { status: 'PROCESSING' | 'COMPLETED'; bodyHash: string; response?: string }
+    >();
+    const redis = {
+      on: jest.fn(),
+      acquireIdempotencyLock: jest.fn(async (key: string, bodyHash: string) => {
+        const existing = records.get(key);
+        if (existing?.status === 'PROCESSING') {
+          return { acquired: false, isReplay: false };
+        }
+        if (existing?.status === 'COMPLETED') {
+          if (existing.bodyHash !== bodyHash) {
+            throw new Error('idempotency_key_reused');
+          }
+          return {
+            acquired: false,
+            isReplay: true,
+            response: existing.response,
+          };
+        }
+        records.set(key, { status: 'PROCESSING', bodyHash });
+        return { acquired: true, isReplay: false };
+      }),
+      saveIdempotencyResult: jest.fn(
+        async (key: string, bodyHash: string, response: string) => {
+          records.set(key, { status: 'COMPLETED', bodyHash, response });
+        },
+      ),
+      releaseIdempotencyLock: jest.fn(async (key: string) => {
+        records.delete(key);
+      }),
+    } as unknown as RedisService;
+    idempotency = new IdempotencyService(redis);
     paymentProvider = {
       processPayment: jest.fn(),
     };

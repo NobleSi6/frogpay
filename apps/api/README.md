@@ -59,8 +59,10 @@ arreglo vacío si todavía no hay transiciones registradas. Las fechas se
 devuelven en ISO 8601 UTC; la interfaz puede formatearlas para la zona horaria
 del usuario.
 
-Este cambio aplica a la respuesta de consulta `GET /api/v1/payments/{id}`.
-La respuesta de creación `POST /api/v1/payments` conserva su contrato
+`GET /api/v1/payments/{id}` usa el caso de uso de consulta, que proporciona los
+campos del pago junto con `statusHistory`; el tipo de respuesta y el esquema
+Swagger del controlador reflejan ese contrato. No se altera el procesamiento
+del pago. La respuesta de creación `POST /api/v1/payments` conserva su contrato
 `PaymentResponseDto` sin `statusHistory`.
 
 ## Estructura
