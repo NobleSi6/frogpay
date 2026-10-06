@@ -5,7 +5,14 @@ export const apiConfigured = Boolean(process.env.NEXT_PUBLIC_API_URL?.trim());
 export const backendIntegrationEnabled = !SPRINT1_DEMO_MODE && apiConfigured;
 
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) { super(message); }
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}, authenticated = true): Promise<T> {
@@ -24,7 +31,18 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}, aut
   if (!response.ok) {
     if (response.status === 401 && authenticated) setSession(null);
     const message = data?.message;
-    throw new ApiError(response.status, response.status >= 500 ? "Error del servidor. Inténtalo de nuevo más tarde." : Array.isArray(message) ? message.join(" ") : typeof message === "string" ? message : "No se pudo completar la solicitud.");
+    const code = typeof data?.code === "string" ? data.code : undefined;
+    throw new ApiError(
+      response.status,
+      response.status >= 500
+        ? "Error del servidor. Inténtalo de nuevo más tarde."
+        : Array.isArray(message)
+          ? message.join(" ")
+          : typeof message === "string"
+            ? message
+            : "No se pudo completar la solicitud.",
+      code,
+    );
   }
   return data as T;
 }
