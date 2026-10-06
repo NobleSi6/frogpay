@@ -4,11 +4,11 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-function load(file, imports = {}) {
+function load(file, imports = {}, globals = {}) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require: (name) => imports[name], setTimeout });
+  vm.runInNewContext(code, { exports, require: (name) => imports[name], setTimeout, process: { env: {} }, ...globals });
   return { exports, source };
 }
 
@@ -21,13 +21,35 @@ test("sandbox Stripe credentials require test prefixes", () => {
   assert.deepEqual({ ...validation.validateStripeCredentials("sandbox", "pk_test_value", "sk_test_value") }, {});
 });
 
-test("provider client returns only a masked secret and declares the pending contract", async () => {
-  const { exports: client, source } = load("features/provider-credentials/provider-credentials-client.ts");
-  const result = await client.providerCredentialsClient.saveStripeCredentials({ tenantId: "tenant", environment: "sandbox", publishableKey: "pk_test_value", secretKey: "sk_test_sensitive" });
-  assert.equal(result.maskedSecret, client.MASKED_PROVIDER_SECRET);
-  assert.equal(JSON.stringify(result).includes("sk_test_sensitive"), false);
-  assert.equal(client.PROVIDER_CREDENTIALS_INTEGRATION.status, "pending-backend-contract");
-  assert.equal(source.includes("apiRequest"), false);
+test("production Stripe credentials require live prefixes", () => {
+  const { exports: validation } = load("features/provider-credentials/stripe-credentials-validation.ts", { "./provider-credentials-client": {} });
+  assert.deepEqual({ ...validation.validateStripeCredentials("production", "pk_test_value", "sk_test_value") }, {
+    publishableKey: "La clave de producción debe comenzar con pk_live_.",
+    secretKey: "La clave de producción debe comenzar con sk_live_.",
+  });
+  assert.deepEqual({ ...validation.validateStripeCredentials("production", "pk_live_value", "sk_live_value") }, {});
+});
+
+test("provider API client uses the verified GET and PUT contract", async () => {
+  const requests = [];
+  const apiRequest = async (path, options) => {
+    requests.push({ path, options });
+    return { environment: "sandbox", configured: true, publishableKey: "pk_test_value", secretKeyMasked: "sk_test_...alue" };
+  };
+  const { exports: client, source } = load(
+    "features/provider-credentials/provider-credentials-client.ts",
+    { "@/lib/api-client": { apiRequest } },
+  );
+  await client.providerCredentialsClient.getStripeCredentials("sandbox");
+  await client.providerCredentialsClient.saveStripeCredentials({ environment: "sandbox", publishableKey: "pk_test_value", secretKey: "sk_test_sensitive" });
+  assert.equal(requests[0].path, "/tenants/me/providers/stripe/credentials/sandbox");
+  assert.equal(requests[0].options, undefined);
+  assert.equal(requests[1].path, "/tenants/me/providers/stripe/credentials/sandbox");
+  assert.equal(requests[1].options.method, "PUT");
+  assert.deepEqual(JSON.parse(requests[1].options.body), { publishableKey: "pk_test_value", secretKey: "sk_test_sensitive" });
+  assert.equal(source.includes("localStorage"), false);
+  assert.equal(source.includes("sessionStorage"), false);
+  assert.equal(source.includes("console."), false);
 });
 
 test("central error map covers every Sprint 2 code with message and action", () => {
@@ -37,4 +59,5 @@ test("central error map covers every Sprint 2 code with message and action", () 
     assert.ok(errors.FROGPAY_ERRORS[code].message);
     assert.ok(errors.FROGPAY_ERRORS[code].action);
   }
+  assert.deepEqual({ ...errors.getFrogPayError("unknown_backend_code") }, { ...errors.UNKNOWN_FROGPAY_ERROR });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CheckCircle2, LoaderCircle, ShieldAlert } from "lucide-react";
 import { EnvironmentBadge } from "@/components/shared/environment-indicator";
 import { ErrorAlert } from "@/components/shared/error-alert";
@@ -9,23 +9,43 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuthSession } from "@/features/auth/auth-session";
 import { useTenantEnvironment } from "../environment-context";
-import { PROVIDER_CREDENTIALS_INTEGRATION, providerCredentialsClient, type PaymentEnvironment, type SavedStripeCredentials } from "../provider-credentials-client";
+import {
+  providerCredentialsClient,
+  type PaymentEnvironment,
+  type SavedStripeCredentials,
+} from "../provider-credentials-client";
 import { validateStripeCredentials, type StripeCredentialErrors } from "../stripe-credentials-validation";
 
 type Status = "default" | "loading" | "success" | "error";
 
 export function StripeCredentialsScreen() {
-  const session = useAuthSession();
   const { environment, setEnvironment } = useTenantEnvironment();
   const productionDialog = useRef<HTMLDialogElement>(null);
   const [publishableKey, setPublishableKey] = useState("");
   const [secretKey, setSecretKey] = useState("");
   const [errors, setErrors] = useState<StripeCredentialErrors>({});
-  const [status, setStatus] = useState<Status>("default");
+  const [status, setStatus] = useState<Status>("loading");
   const [saved, setSaved] = useState<Partial<Record<PaymentEnvironment, SavedStripeCredentials>>>({});
+  const [requestError, setRequestError] = useState<unknown>(null);
   const loading = status === "loading";
+
+  useEffect(() => {
+    let active = true;
+    providerCredentialsClient.getStripeCredentials(environment)
+      .then((result) => {
+        if (!active) return;
+        setSaved((current) => ({ ...current, [environment]: result }));
+        setRequestError(null);
+        setStatus("default");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setRequestError(error);
+        setStatus("error");
+      });
+    return () => { active = false; };
+  }, [environment]);
 
   function selectEnvironment(next: PaymentEnvironment) {
     if (next === environment) return;
@@ -47,31 +67,30 @@ export function StripeCredentialsScreen() {
     setPublishableKey("");
     setSecretKey("");
     setErrors({});
-    setStatus("default");
+    setRequestError(null);
+    setStatus("loading");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const validation = validateStripeCredentials(environment, publishableKey, secretKey);
     setErrors(validation);
+    setRequestError(null);
     if (Object.keys(validation).length > 0) {
       setStatus("error");
       return;
     }
-    const tenantId = session?.user.tenant?.id;
-    if (!tenantId) {
-      setStatus("error");
-      return;
-    }
     setStatus("loading");
+    const submittedSecret = secretKey.trim();
+    setSecretKey("");
     try {
-      const result = await providerCredentialsClient.saveStripeCredentials({ tenantId, environment, publishableKey: publishableKey.trim(), secretKey: secretKey.trim() });
+      const result = await providerCredentialsClient.saveStripeCredentials({ environment, publishableKey: publishableKey.trim(), secretKey: submittedSecret });
       setSaved((current) => ({ ...current, [environment]: result }));
-      setSecretKey("");
       setPublishableKey("");
       setStatus("success");
-    } catch {
+    } catch (error: unknown) {
       setSecretKey("");
+      setRequestError(error);
       setStatus("error");
     }
   }
@@ -87,27 +106,22 @@ export function StripeCredentialsScreen() {
       <EnvironmentBadge environment={environment} />
     </header>
 
-    <Alert>
-      <AlertTitle>Integración backend pendiente</AlertTitle>
-      <AlertDescription>{PROVIDER_CREDENTIALS_INTEGRATION.detail} Por ahora esta pantalla valida el flujo local y nunca conserva la clave secreta.</AlertDescription>
-    </Alert>
-
     <div className="flex w-fit rounded-lg border bg-card p-1" aria-label="Ambiente de Stripe">
       {(["sandbox", "production"] as const).map((value) => <Button key={value} type="button" variant={environment === value ? "default" : "ghost"} aria-pressed={environment === value} onClick={() => selectEnvironment(value)} className="min-h-10">
         {value === "sandbox" ? "Sandbox" : "Producción"}
       </Button>)}
     </div>
 
-    {configured && <Card className="max-w-3xl border-primary-200 bg-primary-50/40">
+    {configured?.configured && <Card className="max-w-3xl border-primary-200 bg-primary-50/40">
       <CardHeader><CardTitle>Credenciales configuradas</CardTitle><CardDescription>La clave secreta permanece protegida y no puede volver a mostrarse.</CardDescription></CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
         <div><p className="text-xs font-medium text-muted-foreground">Clave publicable</p><p className="mt-1 break-all font-mono text-sm">{configured.publishableKey}</p></div>
-        <div><p className="text-xs font-medium text-muted-foreground">Clave secreta</p><p className="mt-1 font-mono text-sm" aria-label="Clave secreta enmascarada">{configured.maskedSecret}</p></div>
+        <div><p className="text-xs font-medium text-muted-foreground">Clave secreta</p><p className="mt-1 font-mono text-sm" aria-label="Clave secreta enmascarada">{configured.secretKeyMasked}</p></div>
       </CardContent>
     </Card>}
 
     <Card className="max-w-3xl">
-      <CardHeader><CardTitle>{configured ? "Actualizar credenciales" : "Configurar credenciales"}</CardTitle><CardDescription>Las claves se validan para el ambiente seleccionado antes de enviarse.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>{configured?.configured ? "Actualizar credenciales" : "Configurar credenciales"}</CardTitle><CardDescription>Las claves se validan para el ambiente seleccionado antes de enviarse.</CardDescription></CardHeader>
       <CardContent>
         <form onSubmit={submit} noValidate className="space-y-5" aria-busy={loading}>
           <div className="space-y-2">
@@ -121,8 +135,8 @@ export function StripeCredentialsScreen() {
             <p id="stripe-secret-help" className="text-xs text-muted-foreground">Por seguridad, FrogPay no volverá a mostrar esta clave después de guardarla.</p>
             {errors.secretKey && <p id="stripe-secret-error" className="text-sm text-destructive">{errors.secretKey}</p>}
           </div>
-          {status === "error" && <ErrorAlert code="validation_error" message={Object.keys(errors).length ? undefined : "No fue posible preparar las credenciales."} action={Object.keys(errors).length ? undefined : "Verifica tu sesión e intenta nuevamente."} />}
-          {status === "success" && <Alert className="border-success/30 bg-success/10 text-success"><CheckCircle2 aria-hidden /><AlertTitle>Credenciales preparadas</AlertTitle><AlertDescription>La clave secreta fue descartada de la pantalla y quedó enmascarada.</AlertDescription></Alert>}
+          {status === "error" && <ErrorAlert code={Object.keys(errors).length ? "validation_error" : undefined} error={requestError} />}
+          {status === "success" && <Alert className="border-success/30 bg-success/10 text-success"><CheckCircle2 aria-hidden /><AlertTitle>Credenciales guardadas</AlertTitle><AlertDescription>La clave secreta fue descartada de la pantalla y solo se conserva su versión enmascarada.</AlertDescription></Alert>}
           <Button type="submit" disabled={loading || !publishableKey.trim() || !secretKey.trim()} className="min-h-11 w-full sm:w-auto">
             {loading && <LoaderCircle aria-hidden className="animate-spin" />}{loading ? "Guardando…" : "Guardar credenciales"}
           </Button>

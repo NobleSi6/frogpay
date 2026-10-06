@@ -15,6 +15,11 @@ export const FROGPAY_ERROR_CODES = [
 export type FrogPayErrorCode = (typeof FROGPAY_ERROR_CODES)[number];
 export type FrogPayErrorContent = { message: string; action: string };
 
+export const UNKNOWN_FROGPAY_ERROR: FrogPayErrorContent = {
+  message: "No pudimos completar la operación.",
+  action: "Intenta nuevamente. Si el problema continúa, contacta a soporte.",
+};
+
 export const FROGPAY_ERRORS: Record<FrogPayErrorCode, FrogPayErrorContent> = {
   card_declined: {
     message: "Tu tarjeta fue rechazada por el banco.",
@@ -62,6 +67,10 @@ export const FROGPAY_ERRORS: Record<FrogPayErrorCode, FrogPayErrorContent> = {
   },
 };
 
-export function getFrogPayError(code: FrogPayErrorCode): FrogPayErrorContent {
-  return FROGPAY_ERRORS[code];
+export function isFrogPayErrorCode(code: unknown): code is FrogPayErrorCode {
+  return typeof code === "string" && FROGPAY_ERROR_CODES.some((item) => item === code);
+}
+
+export function getFrogPayError(code: unknown): FrogPayErrorContent {
+  return isFrogPayErrorCode(code) ? FROGPAY_ERRORS[code] : UNKNOWN_FROGPAY_ERROR;
 }
