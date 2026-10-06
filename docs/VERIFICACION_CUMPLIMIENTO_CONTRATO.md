@@ -374,7 +374,7 @@ if (error instanceof Error && error.message === 'idempotency_key_reused') {
 Consulta el estado de un pago por su ID
 Mismo mecanismo de autenticación por X-Api-Key
 Solo puede consultar pagos de su propio tenant
-Mismo shape de respuesta que el 201 de arriba
+Devuelve los campos del pago más statusHistory cronológico
 404 payment_not_found si no existe o es de otro tenant
 ```
 
@@ -388,13 +388,13 @@ Mismo shape de respuesta que el 201 de arriba
 async getById(
   @CurrentApiKeyContext() apiKeyContext: ApiKeyContext,
   @Param('id') paymentId: string,
-): Promise<PaymentResponseDto>
+): Promise<PaymentDetailsResponseDto>
 ```
 ✅ GET /v1/payments/:id
 ✅ ApiKeyAuthGuard aplicado
 ✅ Extrae ApiKeyContext
 ✅ Valida UUID
-✅ Retorna PaymentResponseDto
+✅ Retorna PaymentDetailsResponseDto, que extiende PaymentResponseDto e incluye statusHistory
 
 ### ✅ Lógica
 `get-payment.use-case.ts` líneas 10-25
@@ -406,7 +406,10 @@ const payment = await tx.payment.findUnique({
       tenant_id: tenantId,
     },
   },
-  include: { payment_method: true },
+  include: {
+    payment_method: true,
+    payment_status_history: { orderBy: { created_at: 'asc' } },
+  },
 });
 
 if (!payment) {
@@ -417,8 +420,9 @@ if (!payment) {
 }
 ```
 ✅ Búsqueda by ID + tenant_id (composite key)
+✅ Incluye historial de estados ordenado cronológicamente
 ✅ 404 payment_not_found si no existe o es otro tenant
-✅ Mismo shape que POST 201
+✅ Conserva los campos base del pago y agrega statusHistory; POST 201 mantiene su respuesta sin historial
 
 ---
 
