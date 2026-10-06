@@ -88,6 +88,7 @@ describe('Dashboard Payments (e2e) - TSK-DEV3-203', () => {
           load: [
             () => ({
               JWT_SECRET: 'test-jwt-secret-for-dashboard-e2e',
+              STRIPE_SECRET_KEY: 'sk_test_dashboard_e2e',
               REDIS_HOST: 'localhost',
               REDIS_PORT: 6379,
               CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),

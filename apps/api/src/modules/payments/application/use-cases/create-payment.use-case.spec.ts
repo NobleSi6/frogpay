@@ -9,12 +9,14 @@ import { IdempotencyService } from '../../infrastructure/idempotency/idempotency
 import type { RedisService } from '../../../../shared/cache/redis.service';
 import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import type { PaymentProviderPort } from '../../../provider-adapters/ports/payment-provider.port';
+import type { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
 import type { CreatePaymentDto } from '../dto/create-payment.dto';
 
 describe('CreatePaymentUseCase', () => {
   let useCase: CreatePaymentUseCase;
   let idempotency: IdempotencyService;
   let paymentProvider: jest.Mocked<PaymentProviderPort>;
+  let paymentProviders: jest.Mocked<Pick<PaymentProviderRegistry, 'resolve'>>;
   let withTenant: jest.Mock;
 
   const tenantId = '0e21495a-7a01-4dd7-8393-6c9cd724d752';
@@ -85,7 +87,12 @@ describe('CreatePaymentUseCase', () => {
     } as unknown as RedisService;
     idempotency = new IdempotencyService(redis);
     paymentProvider = {
-      processPayment: jest.fn(),
+      authorize: jest.fn(),
+      capture: jest.fn(),
+      queryStatus: jest.fn(),
+    };
+    paymentProviders = {
+      resolve: jest.fn().mockReturnValue(paymentProvider),
     };
 
     createdPayment = {
@@ -142,15 +149,14 @@ describe('CreatePaymentUseCase', () => {
     useCase = new CreatePaymentUseCase(
       { withTenant } as unknown as PrismaTenantContextService,
       idempotency,
-      paymentProvider,
+      paymentProviders,
     );
   });
 
   it('successfully creates an approved payment with correct commission and outbox events', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_1234',
-      errorCode: null,
     });
 
     const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
@@ -171,8 +177,8 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('processes a rejected payment with error_code and null commissions', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'rejected',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'declined',
       errorCode: 'card_declined',
       providerTransactionId: 'pi_test_declined',
     });
@@ -189,7 +195,10 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('handles provider timeout gracefully by marking payment as failed and emitting pago.fallido', async () => {
-    paymentProvider.processPayment.mockRejectedValue(new Error('Connection timeout to Stripe'));
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'timeout',
+      errorCode: 'provider_timeout',
+    });
 
     const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
 
@@ -199,20 +208,20 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('returns idempotent replay without calling payment provider a second time', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_1234',
     });
 
     // Primera llamada
     await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
-    expect(paymentProvider.processPayment).toHaveBeenCalledTimes(1);
+    expect(paymentProvider.authorize).toHaveBeenCalledTimes(1);
 
     // Segunda llamada idéntica (Replay)
     const replay = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
     expect(replay.isReplay).toBe(true);
     expect(replay.response.status).toBe('approved');
-    expect(paymentProvider.processPayment).toHaveBeenCalledTimes(1); // No vuelve a llamar
+    expect(paymentProvider.authorize).toHaveBeenCalledTimes(1); // No vuelve a llamar
   });
 
   it('throws 429 when monthly volume limit is exceeded', async () => {
@@ -228,8 +237,8 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('throws 409 Conflict when concurrent request with same idempotency key is in progress', async () => {
-    paymentProvider.processPayment.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ status: 'approved', providerTransactionId: 'pi_test' }), 100)),
+    paymentProvider.authorize.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ outcome: 'approved', providerTransactionId: 'pi_test' }), 100)),
     );
 
     // Primera llamada entra en PROCESSING
@@ -246,8 +255,8 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('throws 422 Unprocessable Entity when idempotency key is reused with different body hash', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_1234',
     });
 
@@ -264,8 +273,8 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('returns same response on idempotent replay without creating duplicate payment record', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_1234',
     });
 
@@ -280,12 +289,12 @@ describe('CreatePaymentUseCase', () => {
     expect(result2.response.id).toBe(paymentId1); // Mismo pago, sin duplicado
 
     // Provider fue llamado solo una vez
-    expect(paymentProvider.processPayment).toHaveBeenCalledTimes(1);
+    expect(paymentProvider.authorize).toHaveBeenCalledTimes(1);
   });
 
   it('updates tenant_plan_usage only on approved payments', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_1234',
     });
 
@@ -298,8 +307,8 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('does NOT update tenant_plan_usage on rejected or failed payments', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'rejected',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'declined',
       errorCode: 'card_declined',
     });
 
@@ -322,7 +331,7 @@ describe('CreatePaymentUseCase', () => {
     useCase = new CreatePaymentUseCase(
       { withTenant } as unknown as PrismaTenantContextService,
       idempotency,
-      paymentProvider,
+      paymentProviders,
     );
 
     await expect(
@@ -331,10 +340,9 @@ describe('CreatePaymentUseCase', () => {
   });
 
   it('generates three outbox events: pago.creado, pago.aprobado, and correct payload', async () => {
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_approved',
-      errorCode: null,
     });
 
     await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
@@ -362,8 +370,8 @@ describe('CreatePaymentUseCase', () => {
   it('caches response in Redis for 24 hours after payment is completed', async () => {
     const saveSpy = jest.spyOn(idempotency, 'saveResult');
 
-    paymentProvider.processPayment.mockResolvedValue({
-      status: 'approved',
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
       providerTransactionId: 'pi_test_cache',
     });
 

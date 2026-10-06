@@ -10,11 +10,7 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
-import {
-  PAYMENT_PROVIDER_PORT,
-  PaymentProviderPort,
-  ProcessPaymentResult,
-} from '../../../provider-adapters/ports/payment-provider.port';
+import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
 
@@ -30,8 +26,8 @@ export class CreatePaymentUseCase {
   constructor(
     private readonly tenantContext: PrismaTenantContextService,
     private readonly idempotency: IdempotencyService,
-    @Inject(PAYMENT_PROVIDER_PORT)
-    private readonly paymentProvider: PaymentProviderPort,
+    @Inject(PaymentProviderRegistry)
+    private readonly paymentProviders: Pick<PaymentProviderRegistry, 'resolve'>,
   ) {}
 
   async execute(
@@ -180,22 +176,46 @@ export class CreatePaymentUseCase {
         });
 
       // 3. Llamada al proveedor externo (Fuera de la transacción de BD)
-      let providerResult: ProcessPaymentResult;
+      let providerResult: {
+        status: PaymentStatus;
+        providerTransactionId: string | null;
+        errorCode: string | null;
+      };
       try {
-        providerResult = await this.paymentProvider.processPayment({
-          tenantId,
-          environment,
+        const provider = this.paymentProviders.resolve(dto.paymentMethod);
+        const result = await provider.authorize({
           amount: dto.amount,
           currency: dto.currency,
-          paymentMethod: dto.paymentMethod,
-          merchantReference: dto.merchantReference,
-          paymentToken: dto.paymentToken,
+          paymentToken: dto.paymentToken ?? '',
           idempotencyKey,
         });
+        providerResult = {
+          status:
+            result.outcome === 'approved'
+              ? 'approved'
+              : result.outcome === 'declined'
+                ? 'rejected'
+                : 'failed',
+          providerTransactionId: result.providerTransactionId ?? null,
+          errorCode:
+            result.errorCode ??
+            (result.outcome === 'declined'
+              ? 'card_declined'
+              : result.outcome === 'timeout'
+                ? 'provider_timeout'
+                : result.outcome === 'error'
+                  ? 'processing_error'
+                  : null),
+        } satisfies {
+          status: PaymentStatus;
+          providerTransactionId: string | null;
+          errorCode: string | null;
+        };
       } catch (error) {
         this.logger.error(`Error o timeout llamando al proveedor de pago:`, error);
         providerResult = {
           status: 'failed',
+          providerTransactionId: null,
           errorCode: 'provider_timeout',
         };
       }
