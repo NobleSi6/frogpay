@@ -12,15 +12,19 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CreditCard, Landmark, Smartphone, AlertTriangle, Lock } from 'lucide-react';
+import { useAuthSession } from '@/features/auth/auth-session';
 
 export default function PagosPage() {
+  const session = useAuthSession();
+  const businessName = session?.user.tenant?.name?.trim() || 'tu negocio';
+
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Header de la sección */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Pagos</h1>
         <p className="text-sm text-muted-foreground">
-          Prueba tu integración en <span className="font-medium text-foreground">Acme Pagos</span>
+          Prueba tu integración en <span className="font-medium text-foreground">{businessName}</span>
         </p>
       </div>
 
@@ -29,7 +33,7 @@ export default function PagosPage() {
         <CardHeader>
           <CardTitle className="text-xl">Elige un método de pago</CardTitle>
           <CardDescription>
-            Selecciona cómo quieres realizar tu nuevo pago de prueba en Acme Pagos.
+            Selecciona cómo quieres realizar tu nuevo pago de prueba en {businessName}.
           </CardDescription>
           <CardAction>
             <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">

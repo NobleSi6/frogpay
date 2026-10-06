@@ -5,12 +5,15 @@ import { useRouter } from 'next/navigation';
 import { StripeElementsProvider } from '@/features/payments/components/StripeElementsProvider';
 import { CardPaymentForm } from '@/features/payments/components/CardPaymentForm';
 import { useCreatePayment } from '@/features/payments/hooks/useCreatePayment';
+import { useAuthSession } from '@/features/auth/auth-session';
 
 export default function NuevoPagoPage() {
   const router = useRouter();
+  const session = useAuthSession();
+  const businessName = session?.user.tenant?.name?.trim() || 'tu negocio';
   const createPaymentMutation = useCreatePayment();
 
-  const [amount] = React.useState<number>(100);
+  const [amount, setAmount] = React.useState('100.00');
   const [currency] = React.useState<string>('BOB');
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
@@ -18,7 +21,7 @@ export default function NuevoPagoPage() {
     setErrorMessage(null);
     try {
       const response = await createPaymentMutation.mutateAsync({
-        amount,
+        amount: Number(amount),
         currency,
         paymentMethodId,
       });
@@ -38,14 +41,16 @@ export default function NuevoPagoPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Nuevo pago de prueba</h1>
         <p className="text-sm text-muted-foreground">
-          Prueba tu integración en <span className="font-medium text-foreground">Acme Pagos</span>
+          Prueba tu integración en <span className="font-medium text-foreground">{businessName}</span>
         </p>
       </div>
 
       <StripeElementsProvider>
         <CardPaymentForm
           amount={amount}
+          onAmountChange={setAmount}
           currency={currency}
+          businessName={businessName}
           onTokenGenerated={handleTokenGenerated}
           isSubmitting={createPaymentMutation.isPending}
         />

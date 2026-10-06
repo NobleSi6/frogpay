@@ -16,15 +16,19 @@ import {
 import { AlertTriangle, Loader2, Check, Lock } from 'lucide-react';
 
 interface CardPaymentFormProps {
-  amount: number | string;
+  amount: string;
+  onAmountChange: (amount: string) => void;
   currency?: string;
+  businessName: string;
   onTokenGenerated: (paymentMethodId: string) => Promise<void>;
   isSubmitting?: boolean;
 }
 
 export function CardPaymentForm({
   amount,
+  onAmountChange,
   currency = 'BOB',
+  businessName,
   onTokenGenerated,
   isSubmitting = false,
 }: CardPaymentFormProps) {
@@ -34,6 +38,11 @@ export function CardPaymentForm({
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isComplete, setIsComplete] = React.useState<boolean>(false);
   const [isProcessingToken, setIsProcessingToken] = React.useState<boolean>(false);
+  const parsedAmount = Number(amount);
+  const isAmountValid =
+    Number.isFinite(parsedAmount) &&
+    parsedAmount > 0 &&
+    /^\d+(\.\d{1,2})?$/.test(amount);
 
   // Manejo tipado de cambios en la tarjeta sin utilizar 'any'
   const handleCardChange = (event: StripeCardElementChangeEvent) => {
@@ -86,7 +95,7 @@ export function CardPaymentForm({
       <CardHeader>
         <CardTitle>Nuevo pago de prueba</CardTitle>
         <CardDescription>
-          Valida tu integración con una tarjeta de prueba.
+          Valida la integración de {businessName} con una tarjeta en modo Sandbox.
         </CardDescription>
         <CardAction>
           <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
@@ -96,7 +105,6 @@ export function CardPaymentForm({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Banner de advertencia Sandbox */}
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
           <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="text-xs">
@@ -107,15 +115,27 @@ export function CardPaymentForm({
           </div>
         </div>
 
-        {/* Resumen de Monto y Moneda */}
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
             <label className="block text-xs font-medium text-muted-foreground mb-1">
               Monto
             </label>
-            <div className="rounded-md border border-input bg-muted/20 px-3 py-2 text-sm font-semibold text-foreground">
-              {Number(amount).toFixed(2)}
-            </div>
+            <input
+              id="payment-amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              required
+              value={amount}
+              onChange={(event) => onAmountChange(event.target.value)}
+              aria-invalid={!isAmountValid}
+              aria-describedby="payment-amount-help"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <p id="payment-amount-help" className="mt-1 text-xs text-muted-foreground">
+              Ingresa un monto mayor que cero, con hasta dos decimales.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -169,7 +189,7 @@ export function CardPaymentForm({
 
           <Button
             type="submit"
-            disabled={!stripe || isLoading || !isComplete}
+            disabled={!stripe || isLoading || !isComplete || !isAmountValid}
             className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium h-10 shadow-sm transition-all disabled:opacity-50"
           >
             {isLoading ? (

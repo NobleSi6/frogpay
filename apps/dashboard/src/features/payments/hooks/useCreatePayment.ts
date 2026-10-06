@@ -1,18 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import {
-  paymentsService,
-  type CreatePaymentDTO,
-} from '../services/payments.service';
+import { paymentsService, type CreatePaymentInput } from '../services/payments.service';
 
 export function useCreatePayment() {
   const [isPending, setIsPending] = useState(false);
 
-  async function mutateAsync(data: CreatePaymentDTO) {
+  async function mutateAsync(data: CreatePaymentInput) {
     setIsPending(true);
     try {
-      return await paymentsService.createPayment(data, crypto.randomUUID());
+      return await paymentsService.createPayment(data);
     } finally {
       setIsPending(false);
     }

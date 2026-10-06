@@ -77,6 +77,19 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
+      {payment.status === 'REJECTED' && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive"
+        >
+          <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-semibold">Pago rechazado</p>
+            <p className="mt-1 text-sm">{payment.rejectionReason}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Resumen del Pago */}
         <Card className="lg:col-span-2 shadow-sm border-border">

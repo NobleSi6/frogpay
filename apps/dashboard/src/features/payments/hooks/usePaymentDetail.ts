@@ -3,33 +3,23 @@ import { paymentsService } from '../services/payments.service';
 import type { PaymentDetail } from '../services/payments.service';
 
 export function usePaymentDetail(id: string) {
-  const [data, setData] = useState<PaymentDetail>();
-  const [isLoading, setIsLoading] = useState(Boolean(id));
-  const [isError, setIsError] = useState(false);
+  const [result, setResult] = useState<{
+    id: string;
+    data?: PaymentDetail;
+    error?: unknown;
+  }>();
 
   useEffect(() => {
-    if (!id) {
-      setData(undefined);
-      setIsLoading(false);
-      setIsError(false);
-      return;
-    }
+    if (!id) return;
 
     let cancelled = false;
-    setIsLoading(true);
-    setIsError(false);
 
     paymentsService.getPaymentById(id).then(
-      (payment) => {
-        if (cancelled) return;
-        setData(payment);
-        setIsLoading(false);
+      (data) => {
+        if (!cancelled) setResult({ id, data });
       },
-      () => {
-        if (cancelled) return;
-        setData(undefined);
-        setIsError(true);
-        setIsLoading(false);
+      (error: unknown) => {
+        if (!cancelled) setResult({ id, error });
       },
     );
 
@@ -38,5 +28,12 @@ export function usePaymentDetail(id: string) {
     };
   }, [id]);
 
-  return { data, isLoading, isError };
+  const isCurrentResult = result?.id === id;
+
+  return {
+    data: isCurrentResult ? result.data : undefined,
+    isLoading: Boolean(id) && !isCurrentResult,
+    isError: isCurrentResult && result.error !== undefined,
+    error: isCurrentResult ? result.error : undefined,
+  };
 }
