@@ -200,6 +200,7 @@ interno del broker y no expongas el puerto de administración públicamente.
 2. **Los módulos no se importan entre sí por dentro.** Se comunican por **eventos** del bus. La única excepción son consultas síncronas imprescindibles (p. ej. "límite restante del plan"), que se hacen a través de un servicio que el módulo **exporta explícitamente**.
 3. **El `tenant_id` nunca viene del body.** Siempre se obtiene del JWT o de la API Key (`@CurrentTenant`).
 4. **RLS con Prisma:** la API se conecta a Supabase con un rol **sin** `BYPASSRLS` (nunca como `postgres`). En cada request, `shared/database` ejecuta la consulta dentro de una transacción que primero hace `set_config('app.current_tenant', <id>, true)`, y las políticas RLS filtran por ese valor.
-5. **Nombres de eventos:** `<dominio>.<acción en participio>` en español: `tenant.creado`, `pago.aprobado`. Las colas se nombran `<modulo>.<evento>` y su DLQ `<cola>.dlq`.
+5. **Nombres de eventos:** `<dominio>.<acción en participio>` en español: `tenant.creado`, `pago.aprobado`. Las colas se nombran `<modulo>.<evento>` y su DLQ `<cola>.dead`
+   (el routing key de la dead-letter queue es `<cola>.dead`, no `.dlq`; ver `docs/eventos.md`).
 6. **Pruebas unitarias** junto al archivo (`create-tenant.use-case.spec.ts`). Las de integración y e2e van en `test/`.
 7. **Idioma:** el código (clases, carpetas, variables) va en inglés; los eventos y los mensajes al usuario, en español.

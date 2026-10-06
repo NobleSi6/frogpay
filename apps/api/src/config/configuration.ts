@@ -1,5 +1,6 @@
 export interface AppConfig {
   nodeEnv: string;
+  outboxPublisherEnabled: boolean;
   port: number;
   corsOrigin: string;
   databaseUrl: string;
@@ -22,6 +23,7 @@ export interface AppConfig {
 
 export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV || 'development',
+  outboxPublisherEnabled: resolveOutboxPublisherEnabled(),
   port: parseInt(process.env.PORT || '4000', 10),
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
@@ -41,6 +43,13 @@ export default (): AppConfig => ({
     db: parseInt(process.env.REDIS_DB || '0', 10),
   },
 });
+
+function resolveOutboxPublisherEnabled(): boolean {
+  const raw = process.env.OUTBOX_PUBLISHER_ENABLED;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return (process.env.NODE_ENV || 'development') === 'production';
+}
 
 function createLocalRabbitUrl(): string {
   const url = new URL(`amqp://${process.env.RABBITMQ_HOST || 'localhost'}:5672`);
