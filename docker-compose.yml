@@ -12,7 +12,8 @@ services:
     environment:
       RABBITMQ_URL: ""
       RABBITMQ_HOST: rabbitmq
-      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       MAIL_HOST: mailpit
     ports:
       - "4000:4000"

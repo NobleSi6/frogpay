@@ -2,6 +2,69 @@
 
 NestJS + Prisma + PostgreSQL (Supabase, con RLS) + RabbitMQ + Redis.
 
+## Consulta del detalle de un pago
+
+El endpoint autenticado con API Key para consultar un pago es:
+
+```http
+GET /api/v1/payments/{id}
+X-Api-Key: <key_prefix>.<secret>
+```
+
+`id` debe ser el UUID del pago. La consulta está limitada al tenant asociado a
+la API Key; si el pago no existe o pertenece a otro tenant, responde `404`.
+Un ID con formato inválido responde `400` y una API Key ausente o inválida
+responde `401`.
+
+La respuesta `200` contiene los datos del pago y el historial cronológico de
+transiciones de estado (`statusHistory`):
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440003",
+  "status": "approved",
+  "amount": "100.00",
+  "currency": "BOB",
+  "paymentMethod": "card",
+  "environment": "sandbox",
+  "merchantReference": "ORD-10293",
+  "commissionAmount": "3.50",
+  "netAmount": "96.50",
+  "providerTransactionId": "pi_example",
+  "errorCode": null,
+  "createdAt": "2026-09-29T14:32:01.000Z",
+  "updatedAt": "2026-09-29T14:32:04.000Z",
+  "statusHistory": [
+    {
+      "previousStatus": null,
+      "newStatus": "pending",
+      "metadata": {},
+      "createdAt": "2026-09-29T14:32:01.000Z"
+    },
+    {
+      "previousStatus": "pending",
+      "newStatus": "approved",
+      "metadata": {},
+      "createdAt": "2026-09-29T14:32:04.000Z"
+    }
+  ]
+}
+```
+
+Para presentar el detalle como en la pantalla de pagos, el frontend puede
+mapear `amount`, `currency`, `commissionAmount`, `netAmount`,
+`paymentMethod` y `merchantReference` a sus etiquetas visibles, y renderizar
+`statusHistory` como la línea de tiempo de estados. El historial puede ser un
+arreglo vacío si todavía no hay transiciones registradas. Las fechas se
+devuelven en ISO 8601 UTC; la interfaz puede formatearlas para la zona horaria
+del usuario.
+
+`GET /api/v1/payments/{id}` usa el caso de uso de consulta, que proporciona los
+campos del pago junto con `statusHistory`; el tipo de respuesta y el esquema
+Swagger del controlador reflejan ese contrato. No se altera el procesamiento
+del pago. La respuesta de creación `POST /api/v1/payments` conserva su contrato
+`PaymentResponseDto` sin `statusHistory`.
+
 ## Estructura
 
 ```

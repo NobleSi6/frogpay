@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
+import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
+import { StripeCredentialsService } from './application/stripe-credentials.service';
+import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import {
   STRIPE_ADAPTER_CODE,
@@ -19,18 +22,17 @@ import {
 import { PaymentProviderRegistry } from './registry/payment-provider.registry';
 
 /**
- * Módulo de integraciones con proveedores de pago.
- *
- * Exporta solo el contrato (el puerto) y el registry. Nada específico de Stripe
- * sale de aquí: `payments` resuelve el adaptador por método de pago y no sabe
- * qué proveedor hay detrás (RF-16).
+ * Proveedores disponibles y credenciales de Stripe administradas por tenant.
+ * Payments selecciona el adaptador usando PaymentProviderRegistry.
  */
 @Module({
   imports: [EventBusModule],
+  controllers: [StripeCredentialsController],
   providers: [
     AdapterEventProbe,
+    StripeCredentialsService,
+    CredentialsEncryptionService,
     {
-      // Se resuelve al arrancar: si falta STRIPE_SECRET_KEY, la API no levanta.
       provide: STRIPE_PROVIDER_CONFIG,
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
@@ -60,16 +62,20 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
           [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter }],
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
-
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();
         if (override) {
           registry.applyBindings(parsePaymentProviderBindings(override), true);
         }
-
         return registry;
       },
     },
   ],
-  exports: [AdapterEventProbe, PAYMENT_PROVIDER_PORT, PaymentProviderRegistry],
+  exports: [
+    AdapterEventProbe,
+    StripeCredentialsService,
+    CredentialsEncryptionService,
+    PAYMENT_PROVIDER_PORT,
+    PaymentProviderRegistry,
+  ],
 })
 export class ProviderAdaptersModule {}
