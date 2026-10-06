@@ -5,7 +5,11 @@ import { useRouter } from 'next/navigation';
 import { StripeElementsProvider } from '@/features/payments/components/StripeElementsProvider';
 import { CardPaymentForm } from '@/features/payments/components/CardPaymentForm';
 import { useCreatePayment } from '@/features/payments/hooks/useCreatePayment';
+import type { CreatePaymentInput } from '@/features/payments/services/payments.service';
 import { useAuthSession } from '@/features/auth/auth-session';
+import { ErrorAlert } from '@/components/shared/error-alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function NuevoPagoPage() {
   const router = useRouter();
@@ -15,25 +19,28 @@ export default function NuevoPagoPage() {
 
   const [amount, setAmount] = React.useState('100.00');
   const [currency] = React.useState<string>('BOB');
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = React.useState<CreatePaymentInput | null>(null);
+  const [requestError, setRequestError] = React.useState<unknown>(null);
 
-  const handleTokenGenerated = async (paymentMethodId: string) => {
-    setErrorMessage(null);
+  const sendPayment = async (attempt: CreatePaymentInput) => {
+    setRequestError(null);
     try {
-      const response = await createPaymentMutation.mutateAsync({
-        amount: Number(amount),
-        currency,
-        paymentMethodId,
-      });
-
+      const response = await createPaymentMutation.mutateAsync(attempt);
+      setRetryAttempt(null);
       router.push(`/dashboard/pagos/${response.id}`);
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo procesar el pago. Inténtalo de nuevo.',
-      );
+      setRetryAttempt(attempt);
+      setRequestError(error);
     }
+  };
+
+  const handleTokenGenerated = async (paymentMethodId: string) => {
+    await sendPayment({
+      amount: Number(amount),
+      currency,
+      paymentMethodId,
+      idempotencyKey: crypto.randomUUID(),
+    });
   };
 
   return (
@@ -45,20 +52,49 @@ export default function NuevoPagoPage() {
         </p>
       </div>
 
-      <StripeElementsProvider>
-        <CardPaymentForm
-          amount={amount}
-          onAmountChange={setAmount}
-          currency={currency}
-          businessName={businessName}
-          onTokenGenerated={handleTokenGenerated}
-          isSubmitting={createPaymentMutation.isPending}
-        />
-      </StripeElementsProvider>
-      {errorMessage && (
-        <p role="alert" className="mx-auto max-w-md text-sm text-destructive">
-          {errorMessage}
-        </p>
+      {retryAttempt ? (
+        <Card className="mx-auto max-w-md">
+          <CardHeader>
+            <CardTitle>No se confirmó el envío</CardTitle>
+            <CardDescription>
+              Puedes reintentar el mismo pago sin cambiar su clave de idempotencia, o descartar este intento.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {requestError !== null && <ErrorAlert error={requestError} />}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={createPaymentMutation.isPending}
+                onClick={() => void sendPayment(retryAttempt)}
+              >
+                {createPaymentMutation.isPending ? 'Reintentando…' : 'Reintentar mismo pago'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createPaymentMutation.isPending}
+                onClick={() => {
+                  setRetryAttempt(null);
+                  setRequestError(null);
+                }}
+              >
+                Iniciar otro intento
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <StripeElementsProvider>
+          <CardPaymentForm
+            amount={amount}
+            onAmountChange={setAmount}
+            currency={currency}
+            businessName={businessName}
+            onTokenGenerated={handleTokenGenerated}
+            isSubmitting={createPaymentMutation.isPending}
+          />
+        </StripeElementsProvider>
       )}
     </div>
   );
