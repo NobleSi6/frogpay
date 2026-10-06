@@ -17,7 +17,7 @@ export type FrogPayErrorContent = { message: string; action: string };
 
 export const UNKNOWN_FROGPAY_ERROR: FrogPayErrorContent = {
   message: "No pudimos completar la operación.",
-  action: "Intenta nuevamente. Si el problema continúa, contacta a soporte.",
+  action: "Intenta nuevamente. Si el problema continúa, contáctanos al +591 71587251 o a frog@support.com.",
 };
 
 export const FROGPAY_ERRORS: Record<FrogPayErrorCode, FrogPayErrorContent> = {

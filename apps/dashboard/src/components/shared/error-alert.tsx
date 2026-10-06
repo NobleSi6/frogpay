@@ -61,11 +61,13 @@ export function ErrorAlert({ code, error, message, action, title = "No pudimos c
     ? getFrogPayError(errorCode)
     : apiFallback ?? getFrogPayError(errorCode);
   const requestId = getRequestId(error);
+  const visibleMessage = message ?? mapped.message;
+  const showMessage = visibleMessage.replace(/[.!]$/, "") !== title.replace(/[.!]$/, "");
   return <Alert variant="destructive">
     <CircleAlert aria-hidden />
     <AlertTitle>{title}</AlertTitle>
     <AlertDescription>
-      <p>{message ?? mapped.message}</p>
+      {showMessage && <p>{visibleMessage}</p>}
       <p className="mt-1 font-medium">{action ?? mapped.action}</p>
       {requestId && <p className="mt-2 text-xs">Referencia: {requestId}</p>}
     </AlertDescription>
