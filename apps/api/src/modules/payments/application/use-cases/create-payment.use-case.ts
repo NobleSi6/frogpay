@@ -151,13 +151,17 @@ export class CreatePaymentUseCase {
           });
 
           // Insertar evento outbox: pago.creado
-          await tx.domain_event_outbox.create({
+          // NOTA: El 'id' se genera automáticamente como UUID en la BD (gen_random_uuid())
+          // Este mismo id será 'eventId' en el sobre que publique TSK-ARQ-205
+          const createdOutboxEvent = await tx.domain_event_outbox.create({
             data: {
               aggregate_type: 'payment',
               aggregate_id: payment.id,
               tenant_id: tenantId,
               event_type: 'pago.creado',
               payload: {
+                // El payload NO incluye eventId aquí - eventId vendrá del sobre completo
+                // (publicador TSK-ARQ-205 reconstruye el sobre con columnas sueltas + payload)
                 paymentId: payment.id,
                 amount: dto.amount,
                 currency: dto.currency,
@@ -167,6 +171,9 @@ export class CreatePaymentUseCase {
               },
             },
           });
+
+          // Para debug: si necesitamos el id generado, está en createdOutboxEvent.id
+          // Pero NO lo guardamos en payload porque eventId irá en el sobre, no en payload
 
           return {
             paymentId: payment.id,
