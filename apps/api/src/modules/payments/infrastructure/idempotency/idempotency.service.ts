@@ -28,18 +28,20 @@ export class IdempotencyService {
   private useMemoryFallback = false;
 
   constructor(private readonly redis: RedisService) {
-    // Escuchar errores de Redis para activar fallback
-    this.redis.on('error', () => {
-      if (!this.useMemoryFallback) {
-        this.logger.warn('Redis unavailable, switching to memory fallback for idempotency');
-        this.useMemoryFallback = true;
-      }
-    });
+    if (redis && typeof redis.on === 'function') {
+      // Escuchar errores de Redis para activar fallback
+      this.redis.on('error', () => {
+        if (!this.useMemoryFallback) {
+          this.logger.warn('Redis unavailable, switching to memory fallback for idempotency');
+          this.useMemoryFallback = true;
+        }
+      });
 
-    this.redis.on('connect', () => {
-      this.useMemoryFallback = false;
-      this.logger.log('Redis connected, using Redis for idempotency');
-    });
+      this.redis.on('connect', () => {
+        this.useMemoryFallback = false;
+        this.logger.log('Redis connected, using Redis for idempotency');
+      });
+    }
   }
 
   /**

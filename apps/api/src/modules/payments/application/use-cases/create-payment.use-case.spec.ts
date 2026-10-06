@@ -1,4 +1,10 @@
-import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { CreatePaymentUseCase } from './create-payment.use-case';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
@@ -186,5 +192,161 @@ describe('CreatePaymentUseCase', () => {
     await expect(
       useCase.execute(tenantId, 'sandbox', idempotencyKey, { ...validDto, amount: '100.00' }),
     ).rejects.toThrow(HttpException);
+  });
+
+  it('throws 409 Conflict when concurrent request with same idempotency key is in progress', async () => {
+    paymentProvider.processPayment.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ status: 'approved', providerTransactionId: 'pi_test' }), 100)),
+    );
+
+    // Primera llamada entra en PROCESSING
+    const promise1 = useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    // Segunda llamada inmediata debe retornar 409
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto),
+    ).rejects.toThrow(ConflictException);
+
+    // Esperar a que termine la primera
+    const result1 = await promise1;
+    expect(result1.response.status).toBe('approved');
+  });
+
+  it('throws 422 Unprocessable Entity when idempotency key is reused with different body hash', async () => {
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'approved',
+      providerTransactionId: 'pi_test_1234',
+    });
+
+    // Primera llamada
+    await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    // Segunda llamada con DIFERENTE monto (distinto body hash)
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+        ...validDto,
+        amount: '200.00', // Diferente
+      }),
+    ).rejects.toThrow(UnprocessableEntityException);
+  });
+
+  it('returns same response on idempotent replay without creating duplicate payment record', async () => {
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'approved',
+      providerTransactionId: 'pi_test_1234',
+    });
+
+    // Primera llamada
+    const result1 = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+    expect(result1.isReplay).toBe(false);
+    const paymentId1 = result1.response.id;
+
+    // Segunda llamada (replay)
+    const result2 = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+    expect(result2.isReplay).toBe(true);
+    expect(result2.response.id).toBe(paymentId1); // Mismo pago, sin duplicado
+
+    // Provider fue llamado solo una vez
+    expect(paymentProvider.processPayment).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates tenant_plan_usage only on approved payments', async () => {
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'approved',
+      providerTransactionId: 'pi_test_1234',
+    });
+
+    await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    // Verificar que se actualizó el plan_usage
+    expect(planUsage).not.toBeNull();
+    expect(planUsage.volume_used).toBe(100); // El monto se incrementó
+    expect(planUsage.tx_count).toBe(1);
+  });
+
+  it('does NOT update tenant_plan_usage on rejected or failed payments', async () => {
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'rejected',
+      errorCode: 'card_declined',
+    });
+
+    await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    // El plan_usage no debe cambiar
+    expect(planUsage).toBeNull();
+  });
+
+  it('throws NotFoundException when tenant does not exist', async () => {
+    withTenant.mockImplementation(async (tenantId: string, callback: (tx: never) => Promise<unknown>) => {
+      const mockTx = {
+        tenant: {
+          findUnique: jest.fn().mockResolvedValue(null), // Tenant no existe
+        },
+      };
+      return callback(mockTx as never);
+    });
+
+    useCase = new CreatePaymentUseCase(
+      { withTenant } as unknown as PrismaTenantContextService,
+      idempotency,
+      paymentProvider,
+    );
+
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('generates three outbox events: pago.creado, pago.aprobado, and correct payload', async () => {
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'approved',
+      providerTransactionId: 'pi_test_approved',
+      errorCode: null,
+    });
+
+    await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    // pago.creado
+    expect(outboxEvents[0].event_type).toBe('pago.creado');
+    expect(outboxEvents[0].aggregate_type).toBe('payment');
+    expect(outboxEvents[0].tenant_id).toBe(tenantId);
+    expect(outboxEvents[0].payload).toEqual({
+      paymentId: createdPayment.id,
+      amount: validDto.amount,
+      currency: validDto.currency,
+      paymentMethod: validDto.paymentMethod,
+      environment: 'sandbox',
+      merchantReference: validDto.merchantReference,
+    });
+
+    // pago.aprobado
+    expect(outboxEvents[1].event_type).toBe('pago.aprobado');
+    expect(outboxEvents[1].payload.providerTransactionId).toBe('pi_test_approved');
+    expect(outboxEvents[1].payload.commissionAmount).toBe('4.00');
+    expect(outboxEvents[1].payload.netAmount).toBe('96.00');
+  });
+
+  it('caches response in Redis for 24 hours after payment is completed', async () => {
+    const saveSpy = jest.spyOn(idempotency, 'saveResult');
+
+    paymentProvider.processPayment.mockResolvedValue({
+      status: 'approved',
+      providerTransactionId: 'pi_test_cache',
+    });
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+    expect(saveSpy).toHaveBeenCalledWith(
+      tenantId,
+      'sandbox',
+      idempotencyKey,
+      expect.any(String), // bodyHash
+      expect.objectContaining({
+        id: result.response.id,
+        status: 'approved',
+      }),
+    );
+
+    saveSpy.mockRestore();
   });
 });
