@@ -81,7 +81,7 @@ export function CardPaymentForm({
       if (paymentMethod) {
         await onTokenGenerated(paymentMethod.id);
       }
-    } catch (err) {
+    } catch {
       setErrorMessage('Ocurrió un error inesperado al generar el token de pago.');
     } finally {
       setIsProcessingToken(false);

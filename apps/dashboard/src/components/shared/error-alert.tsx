@@ -1,6 +1,6 @@
 import { CircleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { getFrogPayError } from "@/config/frogpay-errors";
+import { getFrogPayError, isFrogPayErrorCode } from "@/config/frogpay-errors";
 
 type ErrorAlertProps = {
   code?: string | null;
@@ -25,6 +25,22 @@ function getApiFallback(error: unknown) {
     message: "No tienes permisos para realizar esta acción.",
     action: "Solicita acceso al propietario de tu cuenta.",
   };
+  if (status === 400 || status === 422) return {
+    message: "La solicitud contiene datos que necesitan corrección.",
+    action: "Revisa la información e inténtalo nuevamente.",
+  };
+  if (status === 404) return {
+    message: "No encontramos el recurso solicitado.",
+    action: "Verifica el identificador o vuelve a la lista.",
+  };
+  if (status === 409) return {
+    message: "La operación entra en conflicto con otra solicitud.",
+    action: "Espera a que termine el procesamiento antes de reintentar.",
+  };
+  if (status === 429) return {
+    message: "Se alcanzó el límite de solicitudes o del plan.",
+    action: "Espera un momento o revisa el consumo de tu plan.",
+  };
   return null;
 }
 
@@ -33,15 +49,25 @@ function getApiErrorCode(error: unknown) {
   return typeof error.code === "string" ? error.code : undefined;
 }
 
+function getRequestId(error: unknown) {
+  if (!error || typeof error !== "object" || !("requestId" in error)) return undefined;
+  return typeof error.requestId === "string" ? error.requestId : undefined;
+}
+
 export function ErrorAlert({ code, error, message, action, title = "No pudimos completar la operación" }: ErrorAlertProps) {
   const apiFallback = getApiFallback(error);
-  const mapped = apiFallback ?? getFrogPayError(code ?? getApiErrorCode(error));
+  const errorCode = code ?? getApiErrorCode(error);
+  const mapped = isFrogPayErrorCode(errorCode)
+    ? getFrogPayError(errorCode)
+    : apiFallback ?? getFrogPayError(errorCode);
+  const requestId = getRequestId(error);
   return <Alert variant="destructive">
     <CircleAlert aria-hidden />
     <AlertTitle>{title}</AlertTitle>
     <AlertDescription>
       <p>{message ?? mapped.message}</p>
       <p className="mt-1 font-medium">{action ?? mapped.action}</p>
+      {requestId && <p className="mt-2 text-xs">Referencia: {requestId}</p>}
     </AlertDescription>
   </Alert>;
 }

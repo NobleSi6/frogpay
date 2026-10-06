@@ -6,11 +6,14 @@ import { usePaymentDetail } from '@/features/payments/hooks/usePaymentDetail';
 import { PaymentTimeline } from '@/features/payments/components/PaymentTimeline';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, CreditCard, ShieldAlert, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, CheckCircle2, XCircle } from 'lucide-react';
+import { ApiError } from '@/lib/api-client';
+import { ErrorAlert } from '@/components/shared/error-alert';
+import { EnvironmentBadge } from '@/components/shared/environment-indicator';
 
 export default function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data: payment, isLoading, isError } = usePaymentDetail(id);
+  const { data: payment, isLoading, isError, error } = usePaymentDetail(id);
 
   if (isLoading) {
     return (
@@ -29,13 +32,10 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
             <ArrowLeft className="h-4 w-4" /> Volver a pagos
           </Button>
         </Link>
-        <div className="flex flex-col items-center justify-center p-8 text-center rounded-lg border border-destructive/20 bg-destructive/5 space-y-3">
-          <ShieldAlert className="h-10 w-10 text-destructive" />
-          <p className="font-semibold text-foreground">Error al cargar la transacción</p>
-          <p className="text-sm text-muted-foreground">
-            No se pudo encontrar la transacción con ID <span className="font-mono">{id}</span> o ocurrió un problema en el servidor.
-          </p>
-        </div>
+        <ErrorAlert
+          error={error}
+          title={error instanceof ApiError && error.status === 404 ? 'Pago no encontrado' : 'No pudimos cargar la transacción'}
+        />
       </div>
     );
   }
@@ -56,38 +56,33 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
               className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                 payment.status === 'APPROVED'
                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : payment.status === 'REJECTED'
+                  : payment.status === 'REJECTED' || payment.status === 'FAILED'
                   ? 'bg-destructive/10 text-destructive'
                   : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
               }`}
             >
               {payment.status === 'APPROVED' && <CheckCircle2 className="h-3.5 w-3.5" />}
               {payment.status === 'REJECTED' && <XCircle className="h-3.5 w-3.5" />}
+              {payment.status === 'FAILED' && <XCircle className="h-3.5 w-3.5" />}
               {payment.status === 'APPROVED'
                 ? 'Aprobado'
                 : payment.status === 'REJECTED'
                 ? 'Rechazado'
+                : payment.status === 'FAILED'
+                ? 'Fallido'
                 : 'Pendiente'}
             </span>
           </div>
 
-          <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-            {payment.environment}
-          </span>
+          <EnvironmentBadge environment={payment.environment} />
         </div>
       </div>
 
-      {payment.status === 'REJECTED' && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-destructive"
-        >
-          <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
-          <div>
-            <p className="font-semibold">Pago rechazado</p>
-            <p className="mt-1 text-sm">{payment.rejectionReason}</p>
-          </div>
-        </div>
+      {(payment.status === 'REJECTED' || payment.status === 'FAILED') && (
+        <ErrorAlert
+          code={payment.errorCode}
+          title={payment.status === 'FAILED' ? 'El pago no pudo completarse' : 'Pago rechazado'}
+        />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -133,7 +128,7 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
 
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Ambiente</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{payment.environment}</p>
+              <div className="mt-1"><EnvironmentBadge environment={payment.environment} /></div>
             </div>
 
             <div>

@@ -81,7 +81,8 @@ docker compose logs --tail=100 rabbitmq
 
 ## 5. Direcciones locales
 
-- Dashboard: <http://localhost:3000>
+- Dashboard con Docker Compose: <http://localhost:3001>
+- Dashboard con `npm run dev:dashboard`: <http://localhost:3000>
 - Swagger de la API: <http://localhost:4000/api/docs>
 - Salud de la API: <http://localhost:4000/health>
 - Bandeja de correo Mailpit: <http://localhost:8025>
@@ -133,4 +134,3 @@ Esto detiene los contenedores y conserva los volúmenes locales de Redis y Rabbi
 - **RabbitMQ no inicia:** verifica que `RABBITMQ_PASS` exista en el `.env` raíz y que Docker esté activo.
 - **No aparece el correo:** abre Mailpit en <http://localhost:8025> y revisa `docker compose logs api`.
 - **Revisar el estado de los servicios:** ejecuta `docker compose ps` y `docker compose logs -f api`.
-
