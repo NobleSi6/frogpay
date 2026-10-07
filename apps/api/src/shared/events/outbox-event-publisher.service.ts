@@ -45,6 +45,7 @@ export class OutboxEventPublisher implements OnApplicationBootstrap, OnModuleDes
   }
 
   private async publishPending(): Promise<void> {
+    // Leer fuera de transacción para evitar timeout
     const rows = await this.database.withGlobalAccess((tx) =>
       tx.domain_event_outbox.findMany({
         where: { status: 'pending' },
@@ -53,33 +54,38 @@ export class OutboxEventPublisher implements OnApplicationBootstrap, OnModuleDes
       }),
     );
 
+    // Procesar cada fila en su propia transacción independiente
     for (const row of rows) {
-      try {
-        await this.eventBus.publish(eventFromOutbox(row.payload));
-        await this.database.withGlobalAccess((tx) =>
-          tx.domain_event_outbox.update({
-            where: { id: row.id },
-            data: {
-              status: 'published',
-              published_at: new Date(),
-              attempt_count: { increment: 1 },
-              last_error: null,
-            },
-          }).then(() => undefined),
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'error desconocido';
-        this.logger.warn(`Outbox ${row.id} no publicado; se reintentará: ${message}`);
-        await this.database.withGlobalAccess((tx) =>
-          tx.domain_event_outbox.update({
-            where: { id: row.id },
-            data: {
-              attempt_count: { increment: 1 },
-              last_error: message.slice(0, 1000),
-            },
-          }).then(() => undefined),
-        );
-      }
+      await this.processRow(row);
+    }
+  }
+
+  private async processRow(row: { id: string; payload: Prisma.JsonValue }): Promise<void> {
+    try {
+      await this.eventBus.publish(eventFromOutbox(row.payload));
+      await this.database.withGlobalAccess((tx) =>
+        tx.domain_event_outbox.update({
+          where: { id: row.id },
+          data: {
+            status: 'published',
+            published_at: new Date(),
+            attempt_count: { increment: 1 },
+            last_error: null,
+          },
+        }).then(() => undefined),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'error desconocido';
+      this.logger.warn(`Outbox ${row.id} no publicado; se reintentará: ${message}`);
+      await this.database.withGlobalAccess((tx) =>
+        tx.domain_event_outbox.update({
+          where: { id: row.id },
+          data: {
+            attempt_count: { increment: 1 },
+            last_error: message.slice(0, 1000),
+          },
+        }).then(() => undefined),
+      );
     }
   }
 }
