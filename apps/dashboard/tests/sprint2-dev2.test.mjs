@@ -60,4 +60,6 @@ test("central error map covers every Sprint 2 code with message and action", () 
     assert.ok(errors.FROGPAY_ERRORS[code].action);
   }
   assert.deepEqual({ ...errors.getFrogPayError("unknown_backend_code") }, { ...errors.UNKNOWN_FROGPAY_ERROR });
+  assert.match(errors.UNKNOWN_FROGPAY_ERROR.action, /\+591 71587251/);
+  assert.match(errors.UNKNOWN_FROGPAY_ERROR.action, /frog@support\.com/);
 });
