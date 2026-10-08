@@ -152,10 +152,9 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       where: { email: { equals: email, mode: 'insensitive' } },
       select: { id: true },
     });
-    if (duplicateEmail) {
+    if (duplicateEmail && duplicateEmail.id !== existingAdmin?.id) {
       throw new Error('DEV_PLATFORM_ADMIN_EMAIL ya pertenece a otro usuario.');
     }
-
     const salt = randomBytes(16).toString('hex');
     const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
     const passwordHash = `scrypt$${salt}$${derivedKey.toString('hex')}`;

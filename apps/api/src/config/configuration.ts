@@ -3,6 +3,7 @@ export interface AppConfig {
   outboxPublisherEnabled: boolean;
   port: number;
   corsOrigin: string;
+  frontendUrl: string;
   databaseUrl: string;
   directUrl?: string;
   jwtSecret: string;
@@ -26,6 +27,7 @@ export default (): AppConfig => ({
   outboxPublisherEnabled: resolveOutboxPublisherEnabled(),
   port: parseInt(process.env.PORT || '4000', 10),
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
   directUrl: process.env.DIRECT_URL,
   jwtSecret: process.env.JWT_SECRET || '',
