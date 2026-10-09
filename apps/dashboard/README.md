@@ -66,3 +66,20 @@ apps/dashboard/
 3. Nadie usa `fetch` directo en un componente: todo pasa por `features/*/services` usando `lib/api-client`, y se consume con los hooks de `features/*/hooks`.
 4. Colores y tipografías se usan **solo** desde los tokens de `styles/` y Tailwind, nunca con valores hex sueltos.
 5. La redirección por rol (Platform Admin → `/admin`, Owner → `/dashboard`) vive solo en `middleware.ts`.
+
+## Validar pagos en Sandbox
+
+Completa primero la [guía de puesta en marcha](../../docs/GUIA-PUESTA-EN-MARCHA.md) y configura las credenciales Stripe Sandbox del tenant desde **Dashboard → Configuración → Proveedores → Stripe**. El formulario de pago carga la clave publicable `pk_test_` de ese tenant; no requiere una clave de tarjeta en el cliente.
+
+Para probar el flujo, inicia sesión como Owner, abre **Pagos → Tarjeta** y verifica en la pestaña **Red** que:
+
+- la tarjeta se tokenice mediante Stripe Elements;
+- `POST /api/dashboard/payments/test` envíe `paymentToken: "pm_..."`, JWT e `Idempotency-Key`, nunca número de tarjeta ni CVC;
+- al reintentar un fallo de transporte se repitan la misma clave y el mismo cuerpo.
+
+Los tests y la compilación del dashboard se ejecutan desde la raíz:
+
+```sh
+npm test -w apps/dashboard
+npm run build -w apps/dashboard
+```

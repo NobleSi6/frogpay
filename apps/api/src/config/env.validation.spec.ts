@@ -21,4 +21,24 @@ describe('validateEnvironment', () => {
     expect(environment.PRISMA_TX_MAX_WAIT_MS).toBe(2000);
     expect(typeof environment.PRISMA_TX_MAX_WAIT_MS).toBe('number');
   });
+
+  it('requires a 32-byte hexadecimal encryption key in production', () => {
+    const values = {
+      NODE_ENV: 'production',
+      DATABASE_URL: 'postgresql://localhost/test',
+      JWT_SECRET: 'test-secret-with-at-least-32-characters',
+    };
+
+    expect(() => validateEnvironment(values)).toThrow(
+      'CREDENTIALS_ENCRYPTION_KEY es obligatoria en producción.',
+    );
+    expect(() => validateEnvironment({
+      ...values,
+      CREDENTIALS_ENCRYPTION_KEY: 'a'.repeat(64),
+    })).not.toThrow();
+    expect(() => validateEnvironment({
+      ...values,
+      CREDENTIALS_ENCRYPTION_KEY: 'not-a-key',
+    })).toThrow('CREDENTIALS_ENCRYPTION_KEY debe contener 64 caracteres hexadecimales');
+  });
 });

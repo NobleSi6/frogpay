@@ -134,11 +134,6 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       where: { role_id: role.id },
       select: { id: true },
     });
-    if (existingAdmin) {
-      console.log('Platform Admin de desarrollo ya existe; no se modificó.');
-      return;
-    }
-
     const email = process.env.DEV_PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
     const password = process.env.DEV_PLATFORM_ADMIN_PASSWORD;
     if (!email || !password) {
@@ -157,19 +152,29 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       where: { email: { equals: email, mode: 'insensitive' } },
       select: { id: true },
     });
-    if (duplicateEmail) {
+    if (duplicateEmail && duplicateEmail.id !== existingAdmin?.id) {
       throw new Error('DEV_PLATFORM_ADMIN_EMAIL ya pertenece a otro usuario.');
     }
-
     const salt = randomBytes(16).toString('hex');
     const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
+    const passwordHash = `scrypt$${salt}$${derivedKey.toString('hex')}`;
+
+    if (existingAdmin) {
+      await tx.app_user.update({
+        where: { id: existingAdmin.id },
+        data: { email, password_hash: passwordHash, status: 'active' },
+      });
+      console.log('Platform Admin de desarrollo actualizado correctamente.');
+      return;
+    }
+
     await tx.app_user.create({
       data: {
         tenant_id: null,
         role_id: role.id,
         email,
         status: 'active',
-        password_hash: `scrypt$${salt}$${derivedKey.toString('hex')}`,
+        password_hash: passwordHash,
       },
     });
     console.log('Platform Admin de desarrollo creado correctamente.');
