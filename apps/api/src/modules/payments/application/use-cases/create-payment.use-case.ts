@@ -11,8 +11,11 @@ import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
+import type { PaymentMethodCapability } from '../../../provider-adapters/ports/payment-provider.port';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
 
 export interface CreatePaymentExecutionResult {
   isReplay: boolean;
@@ -27,7 +30,10 @@ export class CreatePaymentUseCase {
     private readonly tenantContext: PrismaTenantContextService,
     private readonly idempotency: IdempotencyService,
     @Inject(PaymentProviderRegistry)
-    private readonly paymentProviders: Pick<PaymentProviderRegistry, 'resolve'>,
+    private readonly paymentProviders: Pick<
+      PaymentProviderRegistry,
+      'resolve' | 'capabilityOf'
+    >,
   ) {}
 
   async execute(
@@ -36,6 +42,24 @@ export class CreatePaymentUseCase {
     idempotencyKey: string,
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentExecutionResult> {
+    let capability: PaymentMethodCapability;
+    try {
+      capability = this.paymentProviders.capabilityOf(dto.paymentMethod);
+    } catch (error) {
+      if (error instanceof UnsupportedPaymentMethodError) {
+        throw new ValidationError({
+          field: 'paymentMethod',
+          value: dto.paymentMethod,
+          supportedMethods: error.supportedPaymentMethods,
+        });
+      }
+      throw error;
+    }
+
+    if (capability.requiresPaymentToken && !dto.paymentToken) {
+      throw new ValidationError({ field: 'paymentToken', reason: 'required' });
+    }
+
     const bodyHash = this.idempotency.computeCanonicalBodyHash(dto);
 
     // 1. Reclamar clave de idempotencia atómicamente en Redis

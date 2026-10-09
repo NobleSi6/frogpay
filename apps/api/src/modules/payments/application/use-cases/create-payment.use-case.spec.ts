@@ -10,14 +10,27 @@ import type { RedisService } from '../../../../shared/cache/redis.service';
 import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import type { PaymentProviderPort } from '../../../provider-adapters/ports/payment-provider.port';
 import type { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
 import type { CreatePaymentDto } from '../dto/create-payment.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
 
 describe('CreatePaymentUseCase', () => {
   let useCase: CreatePaymentUseCase;
   let idempotency: IdempotencyService;
   let paymentProvider: jest.Mocked<PaymentProviderPort>;
-  let paymentProviders: jest.Mocked<Pick<PaymentProviderRegistry, 'resolve'>>;
+  let paymentProviders: jest.Mocked<
+    Pick<PaymentProviderRegistry, 'resolve' | 'capabilityOf'>
+  >;
   let withTenant: jest.Mock;
+  let transaction: {
+    tenant: { findUnique: jest.Mock };
+    tenant_plan_usage: { findUnique: jest.Mock; upsert: jest.Mock };
+    payment: { create: jest.Mock; update: jest.Mock };
+    payment_method: { findUnique: jest.Mock };
+    provider: { findFirst: jest.Mock };
+    payment_status_history: { create: jest.Mock };
+    domain_event_outbox: { create: jest.Mock };
+  };
 
   const tenantId = '0e21495a-7a01-4dd7-8393-6c9cd724d752';
   const idempotencyKey = '550e8400-e29b-41d4-a716-446655440000';
@@ -98,6 +111,13 @@ describe('CreatePaymentUseCase', () => {
     };
     paymentProviders = {
       resolve: jest.fn().mockReturnValue(paymentProvider),
+      capabilityOf: jest.fn().mockReturnValue({
+        code: 'card',
+        label: 'Tarjeta',
+        processingMode: 'synchronous',
+        requiresPaymentToken: true,
+        fees: { fixedAmount: '0.30', variableBps: 290, currency: 'USD' },
+      }),
     };
 
     createdPayment = {
@@ -112,7 +132,7 @@ describe('CreatePaymentUseCase', () => {
     outboxEvents = [];
     planUsage = null;
 
-    const mockTx = {
+    transaction = {
       tenant: {
         findUnique: jest.fn().mockResolvedValue(mockTenant),
       },
@@ -148,7 +168,7 @@ describe('CreatePaymentUseCase', () => {
     };
 
     withTenant = jest.fn(async (_tenantId: string, callback: (tx: never) => Promise<unknown>) =>
-      callback(mockTx as never),
+      callback(transaction as never),
     );
 
     useCase = new CreatePaymentUseCase(
@@ -156,6 +176,74 @@ describe('CreatePaymentUseCase', () => {
       idempotency,
       paymentProviders,
     );
+  });
+
+  it('rejects unsupported methods before acquiring a lock or opening a database transaction', async () => {
+    paymentProviders.capabilityOf.mockImplementation(() => {
+      throw new UnsupportedPaymentMethodError('unknown', ['card']);
+    });
+    const acquireLock = jest.spyOn(idempotency, 'acquireLock');
+
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+        ...validDto,
+        paymentMethod: 'unknown',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(acquireLock).not.toHaveBeenCalled();
+    expect(withTenant).not.toHaveBeenCalled();
+    expect(transaction.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing token when the selected capability requires one', async () => {
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+        ...validDto,
+        paymentToken: undefined,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+
+  it('processes a metadata capability without a token', async () => {
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'mock',
+      label: 'Mock',
+      processingMode: 'synchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '0.00', variableBps: 0, currency: 'BOB' },
+    });
+    transaction.payment_method.findUnique.mockResolvedValue({
+      id: 'pm-mock',
+      code: 'mock',
+      name: 'Mock',
+    });
+    transaction.provider.findFirst.mockResolvedValue({
+      id: 'provider-mock',
+      code: 'mock',
+      payment_method_id: 'pm-mock',
+      is_active: true,
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
+      providerTransactionId: 'mock-test-id',
+    });
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+      ...validDto,
+      paymentMethod: 'mock',
+      paymentToken: undefined,
+    });
+
+    expect(result.response.status).toBe('approved');
+    expect(paymentProviders.resolve).toHaveBeenCalledWith('mock');
+    expect(paymentProvider.authorize).toHaveBeenCalledWith({
+      amount: '100.00',
+      currency: 'BOB',
+      paymentToken: '',
+      idempotencyKey,
+    });
   });
 
   it('successfully creates an approved payment with correct commission and outbox events', async () => {

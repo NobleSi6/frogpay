@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsIn,
   IsNotEmpty,
@@ -32,15 +33,14 @@ export class CreatePaymentDto {
   currency!: string;
 
   @ApiProperty({
-    description: 'Método de pago. Sprint 2 solo acepta "card".',
+    description: 'Código del método de pago soportado por un adapter habilitado.',
     example: 'card',
-    enum: ['card'],
   })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsString({ message: 'paymentMethod debe ser una cadena.' })
   @IsNotEmpty({ message: 'paymentMethod es obligatorio.' })
-  @IsIn(['card'], {
-    message: 'paymentMethod solo soporta "card" en este sprint.',
-  })
   paymentMethod!: string;
 
   @ApiProperty({
