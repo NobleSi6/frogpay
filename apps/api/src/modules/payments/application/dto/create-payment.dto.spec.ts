@@ -20,10 +20,11 @@ describe('CreatePaymentDto', () => {
     expect(dto.paymentToken).toBeUndefined();
   });
 
-  it('continues to require a valid Stripe token for card', () => {
+  it('continues to validate Stripe token format when a token is provided', () => {
     const dto = plainToInstance(CreatePaymentDto, {
       ...validPaymentFields,
-      paymentMethod: ' CARD ',
+      paymentMethod: 'card',
+      paymentToken: 'invalid-token',
     });
 
     expect(validateSync(dto)).toEqual(

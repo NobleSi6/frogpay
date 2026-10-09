@@ -1,6 +1,7 @@
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaModule } from '../../shared/database/prisma.module';
+import { MockPaymentProviderAdapter } from './adapters/mock/mock-payment-provider.adapter';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import { PAYMENT_PROVIDER_PORT } from './ports/payment-provider.port';
 import { ProviderAdaptersModule } from './provider-adapters.module';
@@ -52,5 +53,11 @@ describe('ProviderAdaptersModule', () => {
         },
       ],
     });
+  });
+
+  it('registers the mock adapter outside production', () => {
+    expect(moduleRef.get(MockPaymentProviderAdapter, { strict: false })).toBeInstanceOf(
+      MockPaymentProviderAdapter,
+    );
   });
 });

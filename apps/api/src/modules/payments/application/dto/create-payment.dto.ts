@@ -60,7 +60,7 @@ export class CreatePaymentDto {
     example: 'pm_1Nk000000000000000000000',
     required: false,
   })
-  @ValidateIf((o: CreatePaymentDto) => o.paymentMethod === 'card')
+  @ValidateIf((o: CreatePaymentDto) => o.paymentToken !== undefined)
   @IsString({ message: 'paymentToken debe ser una cadena.' })
   @IsNotEmpty({ message: 'paymentToken es obligatorio para el método "card".' })
   @Matches(/^pm_[a-zA-Z0-9_]+$/, {
