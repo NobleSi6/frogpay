@@ -58,6 +58,13 @@ export class MissingPaymentProviderBindingError extends Error {
   }
 }
 
+export class UnsupportedPaymentProviderBindingError extends Error {
+  constructor(readonly adapterCode: string, readonly paymentMethod: string) {
+    super(`El adaptador "${adapterCode}" no declara soporte para el método "${paymentMethod}".`);
+    this.name = UnsupportedPaymentProviderBindingError.name;
+  }
+}
+
 export class InvalidPaymentProviderBindingsError extends Error {
   constructor(readonly raw: string, reason: string) {
     super(`PAYMENT_PROVIDER_BINDINGS inválido ("${raw}"): ${reason}`);

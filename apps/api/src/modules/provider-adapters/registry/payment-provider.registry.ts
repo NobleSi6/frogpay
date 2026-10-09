@@ -1,37 +1,78 @@
 import { Logger } from '@nestjs/common';
-import { PaymentProviderPort } from '../ports/payment-provider.port';
+import { PaymentMethodCapability, PaymentProviderPort } from '../ports/payment-provider.port';
 import {
   DuplicatePaymentProviderBindingError,
+  InvalidPaymentProviderBindingsError,
   MissingPaymentProviderBindingError,
   normalizeCode,
   PaymentProviderBinding,
   PaymentProviderRegistration,
   UnsupportedPaymentMethodError,
+  UnsupportedPaymentProviderBindingError,
 } from './payment-provider.binding';
 
+export interface RegisteredPaymentMethod extends PaymentMethodCapability {
+  providerId: string;
+}
+
+interface ResolvedPaymentProvider {
+  adapter: PaymentProviderPort;
+  capability: PaymentMethodCapability;
+  providerId: string;
+}
+
 /**
- * Strategy: resuelve el adaptador de un método de pago sin que el núcleo
- * (`payments`) ni el registry contengan condiciones por proveedor. La selección
- * es una tabla de datos; agregar un proveedor es agregar un binding.
- *
- * Se construyen dos tablas: los adaptadores disponibles, indexados por su
- * código, y los bindings método de pago -> adaptador. La tabla de bindings
- * puede venir del módulo o de la configuración, de modo que cambiar el mapeo no
- * obliga a tocar el código.
+ * Builds a method-to-adapter strategy from adapter metadata, then applies
+ * explicit configuration bindings where multiple adapters support a method.
  */
 export class PaymentProviderRegistry {
   private readonly logger = new Logger(PaymentProviderRegistry.name);
   private readonly adaptersByCode = new Map<string, PaymentProviderPort>();
-  private readonly adaptersByPaymentMethod = new Map<string, PaymentProviderPort>();
+  private readonly adaptersByPaymentMethod = new Map<string, ResolvedPaymentProvider>();
 
   constructor(
     registrations: readonly PaymentProviderRegistration[],
     defaultBindings: readonly PaymentProviderBinding[],
   ) {
     for (const registration of registrations) {
-      this.adaptersByCode.set(normalizeCode(registration.adapterCode), registration.adapter);
+      const adapterCode = normalizeCode(registration.adapterCode);
+      const metadataId = normalizeCode(registration.adapter.metadata.id);
+      if (adapterCode !== metadataId) {
+        throw new InvalidPaymentProviderBindingsError(
+          registration.adapterCode,
+          `no coincide con el id de metadata "${registration.adapter.metadata.id}".`,
+        );
+      }
+      if (this.adaptersByCode.has(adapterCode)) {
+        throw new InvalidPaymentProviderBindingsError(
+          registration.adapterCode,
+          'el id del adaptador está registrado más de una vez.',
+        );
+      }
+      this.adaptersByCode.set(adapterCode, registration.adapter);
     }
+
+    this.bindMetadataMethods(defaultBindings);
     this.applyBindings(defaultBindings);
+  }
+
+  supports(paymentMethod: string): boolean {
+    return this.adaptersByPaymentMethod.has(normalizeCode(paymentMethod));
+  }
+
+  capabilityOf(paymentMethod: string): PaymentMethodCapability {
+    const key = normalizeCode(paymentMethod);
+    const resolved = this.adaptersByPaymentMethod.get(key);
+    if (!resolved) {
+      throw new UnsupportedPaymentMethodError(key, this.supportedPaymentMethods());
+    }
+    return resolved.capability;
+  }
+
+  listMethods(): RegisteredPaymentMethod[] {
+    return [...this.adaptersByPaymentMethod.values()]
+      .map(({ capability, providerId }) => ({ ...capability, providerId }))
+      .sort((left, right) => left.code.localeCompare(right.code));
   }
 
   supportedPaymentMethods(): string[] {
@@ -44,40 +85,118 @@ export class PaymentProviderRegistry {
 
   resolve(paymentMethod: string): PaymentProviderPort {
     const key = normalizeCode(paymentMethod);
-    const adapter = this.adaptersByPaymentMethod.get(key);
-    if (!adapter) {
+    const resolved = this.adaptersByPaymentMethod.get(key);
+    if (!resolved) {
       throw new UnsupportedPaymentMethodError(key, this.supportedPaymentMethods());
     }
-    return adapter;
+    return resolved.adapter;
   }
 
   /**
-   * Aplica una tabla de bindings. Si `replace` es falso (por defecto) solo se
-   * sobreescribe el binding de los métodos de pago indicados.
+   * Applies an explicit method-to-adapter table. With replace=true, the table
+   * becomes the complete enabled-method configuration.
    */
   applyBindings(bindings: readonly PaymentProviderBinding[], replace = false): void {
     const duplicates = this.findDuplicates(bindings);
     if (duplicates) {
-      throw new DuplicatePaymentProviderBindingError(duplicates.paymentMethod, duplicates.adapterCodes);
+      throw new DuplicatePaymentProviderBindingError(
+        duplicates.paymentMethod,
+        duplicates.adapterCodes,
+      );
     }
+
+    const resolvedBindings = bindings.map((binding) => {
+      const paymentMethod = normalizeCode(binding.paymentMethod);
+      const adapterCode = normalizeCode(binding.adapterCode);
+      const adapter = this.adaptersByCode.get(adapterCode);
+      if (!adapter) {
+        throw new MissingPaymentProviderBindingError(binding.adapterCode, paymentMethod);
+      }
+
+      const capability = adapter.metadata.methods.find(
+        (method) => normalizeCode(method.code) === paymentMethod,
+      );
+      if (!capability) {
+        throw new UnsupportedPaymentProviderBindingError(binding.adapterCode, paymentMethod);
+      }
+
+      return { paymentMethod, adapterCode, adapter, capability };
+    });
 
     if (replace) {
       this.adaptersByPaymentMethod.clear();
     }
 
-    for (const binding of bindings) {
-      const paymentMethod = normalizeCode(binding.paymentMethod);
-      const adapter = this.adaptersByCode.get(normalizeCode(binding.adapterCode));
-      if (!adapter) {
-        throw new MissingPaymentProviderBindingError(binding.adapterCode, paymentMethod);
-      }
-      this.adaptersByPaymentMethod.set(paymentMethod, adapter);
+    for (const binding of resolvedBindings) {
+      this.adaptersByPaymentMethod.set(binding.paymentMethod, {
+        adapter: binding.adapter,
+        capability: binding.capability,
+        providerId: binding.adapterCode,
+      });
     }
 
     this.logger.log(
       `Adaptadores de proveedor: ${this.supportedAdapterCodes().join(', ') || 'ninguno'}. ` +
         `Métodos de pago: ${this.supportedPaymentMethods().join(', ') || 'ninguno'}.`,
     );
+  }
+
+  private bindMetadataMethods(explicitBindings: readonly PaymentProviderBinding[]): void {
+    const explicitByMethod = new Map<string, string>();
+    for (const binding of explicitBindings) {
+      const paymentMethod = normalizeCode(binding.paymentMethod);
+      const adapterCode = normalizeCode(binding.adapterCode);
+      if (!this.adaptersByCode.has(adapterCode)) {
+        throw new MissingPaymentProviderBindingError(binding.adapterCode, paymentMethod);
+      }
+      if (explicitByMethod.has(paymentMethod)) continue;
+      explicitByMethod.set(paymentMethod, adapterCode);
+    }
+
+    const methods = new Map<
+      string,
+      Array<{ adapterCode: string; adapter: PaymentProviderPort; capability: PaymentMethodCapability }>
+    >();
+    for (const [adapterCode, adapter] of this.adaptersByCode) {
+      const seenMethods = new Set<string>();
+      for (const capability of adapter.metadata.methods) {
+        const paymentMethod = normalizeCode(capability.code);
+        if (seenMethods.has(paymentMethod)) {
+          throw new InvalidPaymentProviderBindingsError(
+            adapterCode,
+            `el método "${paymentMethod}" aparece más de una vez en su metadata.`,
+          );
+        }
+        seenMethods.add(paymentMethod);
+        const candidates = methods.get(paymentMethod) ?? [];
+        candidates.push({ adapterCode, adapter, capability });
+        methods.set(paymentMethod, candidates);
+      }
+    }
+
+    for (const [paymentMethod, candidates] of methods) {
+      const configuredAdapter = explicitByMethod.get(paymentMethod);
+      if (configuredAdapter) {
+        const selected = candidates.find(({ adapterCode }) => adapterCode === configuredAdapter);
+        if (!selected) {
+          throw new UnsupportedPaymentProviderBindingError(configuredAdapter, paymentMethod);
+        }
+        continue;
+      }
+      if (candidates.length > 1) {
+        throw new DuplicatePaymentProviderBindingError(
+          paymentMethod,
+          candidates.map(({ adapterCode }) => adapterCode),
+        );
+      }
+
+      const candidate = candidates[0];
+      this.adaptersByPaymentMethod.set(paymentMethod, {
+        adapter: candidate.adapter,
+        capability: candidate.capability,
+        providerId: candidate.adapterCode,
+      });
+    }
   }
 
   private findDuplicates(
