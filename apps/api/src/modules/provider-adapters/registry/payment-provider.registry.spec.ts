@@ -11,6 +11,19 @@ import { PaymentProviderRegistry } from './payment-provider.registry';
 
 function fakeAdapter(name: string): PaymentProviderPort {
   return {
+    metadata: {
+      id: name,
+      displayName: name,
+      methods: [
+        {
+          code: name === 'stripe' ? 'card' : 'wallet',
+          label: name,
+          processingMode: 'synchronous',
+          requiresPaymentToken: false,
+          fees: { fixedAmount: '0.00', variableBps: 0, currency: 'USD' },
+        },
+      ],
+    },
     authorize: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),
     capture: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),
     queryStatus: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),

@@ -87,6 +87,11 @@ describe('CreatePaymentUseCase', () => {
     } as unknown as RedisService;
     idempotency = new IdempotencyService(redis);
     paymentProvider = {
+      metadata: {
+        id: 'stripe',
+        displayName: 'Stripe',
+        methods: [],
+      },
       authorize: jest.fn(),
       capture: jest.fn(),
       queryStatus: jest.fn(),

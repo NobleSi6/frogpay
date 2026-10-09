@@ -37,4 +37,20 @@ describe('ProviderAdaptersModule', () => {
       moduleRef.get(StripePaymentProviderAdapter, { strict: false }),
     );
   });
+
+  it('declares Stripe method and processing metadata on the adapter', () => {
+    expect(moduleRef.get(StripePaymentProviderAdapter, { strict: false }).metadata).toEqual({
+      id: 'stripe',
+      displayName: 'Stripe',
+      methods: [
+        {
+          code: 'card',
+          label: 'Tarjeta',
+          processingMode: 'synchronous',
+          requiresPaymentToken: true,
+          fees: { fixedAmount: '0.30', variableBps: 290, currency: 'USD' },
+        },
+      ],
+    });
+  });
 });

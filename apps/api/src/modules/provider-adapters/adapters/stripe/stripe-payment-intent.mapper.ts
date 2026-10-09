@@ -1,5 +1,8 @@
 import type * as Stripe from 'stripe';
-import { ProviderResult } from '../../ports/payment-provider.port';
+import {
+  PaymentProviderErrorCode,
+  ProviderResult,
+} from '../../ports/payment-provider.port';
 import { ERROR_CATALOG } from '../../../../shared/http/errors/error-catalog';
 
 /** Catálogo cerrado compartido por errores HTTP y resultados de pago. */
@@ -55,7 +58,7 @@ export function mapPaymentIntentToResult(intent: Stripe.PaymentIntent): Provider
   }
 }
 
-export function toCatalogDeclineErrorCode(code: string | undefined): string {
+export function toCatalogDeclineErrorCode(code: string | undefined): PaymentProviderErrorCode {
   switch (code) {
     case ERROR_CATALOG.insufficient_funds.code:
     case ERROR_CATALOG.expired_card.code:
