@@ -150,7 +150,10 @@ describe('CreatePaymentUseCase', () => {
         findFirst: jest.fn().mockResolvedValue(mockProvider),
       },
       payment: {
-        create: jest.fn().mockImplementation(async () => createdPayment),
+        create: jest.fn().mockImplementation(async ({ data }) => {
+          createdPayment = { ...createdPayment, ...data };
+          return createdPayment;
+        }),
         update: jest.fn().mockImplementation(async (args) => {
           createdPayment = { ...createdPayment, ...args.data };
           return createdPayment;
@@ -482,5 +485,79 @@ describe('CreatePaymentUseCase', () => {
     );
 
     saveSpy.mockRestore();
+  });
+
+  it('persists and caches pending QR payments without a token or final event', async () => {
+    const qrPayload = '0002010102126304A1B2';
+    const expiresAt = new Date('2026-10-10T18:45:00.000Z');
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'qr',
+      label: 'Billetera QR',
+      processingMode: 'asynchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '0.00', variableBps: 100, currency: 'BOB' },
+    });
+    transaction.payment_method.findUnique.mockResolvedValue({
+      id: 'pm-qr',
+      code: 'qr',
+      name: 'QR interoperable',
+    });
+    transaction.provider.findFirst.mockResolvedValue({
+      id: 'provider-qr-local',
+      code: 'qr_local',
+      payment_method_id: 'pm-qr',
+      is_active: true,
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'pending',
+      providerTransactionId: 'FP0123456789ABCDEF',
+      qrPayload,
+      expiresAt,
+    });
+
+    const qrDto: CreatePaymentDto = {
+      amount: '100.00',
+      currency: 'BOB',
+      paymentMethod: 'qr',
+      merchantReference: 'orden-qr-1',
+    };
+    const first = await useCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+    const replay = await useCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+    expect(first).toEqual({
+      isReplay: false,
+      response: expect.objectContaining({
+        id: createdPayment.id,
+        status: 'pending',
+        paymentMethod: 'qr',
+        providerTransactionId: 'FP0123456789ABCDEF',
+        commissionAmount: null,
+        netAmount: null,
+        qrPayload,
+        expiresAt: expiresAt.toISOString(),
+      }),
+    });
+    expect(replay).toEqual({ isReplay: true, response: first.response });
+    expect(transaction.payment.create).toHaveBeenCalledTimes(1);
+    expect(transaction.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'pending',
+          provider_transaction_id: 'FP0123456789ABCDEF',
+          qr_payload: qrPayload,
+          expires_at: expiresAt,
+        }),
+      }),
+    );
+    expect(paymentProvider.authorize).toHaveBeenCalledTimes(1);
+    expect(paymentProvider.authorize).toHaveBeenCalledWith({
+      amount: '100.00',
+      currency: 'BOB',
+      paymentToken: '',
+      idempotencyKey,
+    });
+    expect(transaction.payment_status_history.create).toHaveBeenCalledTimes(1);
+    expect(outboxEvents.map(({ event_type }) => event_type)).toEqual(['pago.creado']);
+    expect(planUsage).toBeNull();
   });
 });

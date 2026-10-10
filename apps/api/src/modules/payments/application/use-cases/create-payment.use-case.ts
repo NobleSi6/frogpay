@@ -208,6 +208,8 @@ export class CreatePaymentUseCase {
         status: PaymentStatus;
         providerTransactionId: string | null;
         errorCode: string | null;
+        qrPayload: string | null;
+        expiresAt: Date | null;
       };
       try {
         const provider = this.paymentProviders.resolve(dto.paymentMethod);
@@ -219,12 +221,16 @@ export class CreatePaymentUseCase {
         });
         providerResult = {
           status:
-            result.outcome === 'approved'
+            result.outcome === 'pending'
+              ? 'pending'
+              : result.outcome === 'approved'
               ? 'approved'
               : result.outcome === 'declined'
                 ? 'rejected'
                 : 'failed',
           providerTransactionId: result.providerTransactionId ?? null,
+          qrPayload: result.qrPayload ?? null,
+          expiresAt: result.expiresAt ?? null,
           errorCode:
             result.errorCode ??
             (result.outcome === 'declined'
@@ -238,12 +244,16 @@ export class CreatePaymentUseCase {
           status: PaymentStatus;
           providerTransactionId: string | null;
           errorCode: string | null;
+          qrPayload: string | null;
+          expiresAt: Date | null;
         };
       } catch (error) {
         this.logger.error(`Error o timeout llamando al proveedor de pago:`, error);
         providerResult = {
           status: 'failed',
           providerTransactionId: null,
+          qrPayload: null,
+          expiresAt: null,
           errorCode: 'provider_timeout',
         };
       }
@@ -263,12 +273,18 @@ export class CreatePaymentUseCase {
           data: {
             status: finalStatus,
             provider_transaction_id: providerResult.providerTransactionId ?? null,
+            qr_payload: providerResult.qrPayload,
+            expires_at: providerResult.expiresAt,
             error_code: providerResult.errorCode ?? null,
             commission_amount: isApproved ? commissionAmount : null,
             net_amount: isApproved ? netAmount : null,
             updated_at: new Date(),
           },
         });
+
+        if (finalStatus === 'pending') {
+          return payment;
+        }
 
         // Historial de cambio de estado
         await tx.payment_status_history.create({
@@ -373,6 +389,12 @@ export class CreatePaymentUseCase {
         errorCode: providerResult.errorCode ?? null,
         createdAt: updatedPayment.created_at.toISOString(),
         updatedAt: updatedPayment.updated_at.toISOString(),
+        ...(finalStatus === 'pending'
+          ? {
+              qrPayload: providerResult.qrPayload,
+              expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+            }
+          : {}),
       };
 
       // 6. Guardar en caché de idempotencia por 24 horas
