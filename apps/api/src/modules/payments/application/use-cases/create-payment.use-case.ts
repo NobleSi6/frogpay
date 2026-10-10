@@ -16,6 +16,7 @@ import type { PaymentMethodCapability } from '../../../provider-adapters/ports/p
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
 import { ValidationError } from '../../../../shared/http/errors/validation-error';
+import { calculatePaymentAmounts } from './payment-amount-calculator';
 
 export interface CreatePaymentExecutionResult {
   isReplay: boolean;
@@ -123,10 +124,7 @@ export class CreatePaymentUseCase {
           // Calcular comisión según el plan
           const commFixed = plan ? Number(plan.commission_fixed) : 0;
           const commPct = plan ? Number(plan.commission_pct) : 0;
-          const calculatedCommission = Number(
-            (requestedAmount * commPct + commFixed).toFixed(2),
-          );
-          const calculatedNet = Number((requestedAmount - calculatedCommission).toFixed(2));
+          const amounts = calculatePaymentAmounts(requestedAmount, commFixed, commPct);
 
           // Obtener método de pago y proveedor
           const paymentMethod = await tx.payment_method.findUnique({
@@ -198,8 +196,8 @@ export class CreatePaymentUseCase {
 
           return {
             paymentId: payment.id,
-            commissionAmount: calculatedCommission.toFixed(2),
-            netAmount: calculatedNet.toFixed(2),
+            commissionAmount: amounts.commissionAmount,
+            netAmount: amounts.netAmount,
           };
         });
 
