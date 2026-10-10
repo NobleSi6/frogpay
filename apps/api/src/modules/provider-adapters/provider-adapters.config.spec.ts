@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { MockPaymentProviderAdapter } from './adapters/mock/mock-payment-provider.adapter';
+import { QRLocalPaymentProviderAdapter } from './adapters/qr-local/qr-local-payment-provider.adapter';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import { getPaymentProviderAdapters } from './provider-adapters.config';
 import { PaymentProviderPort, ProviderResult } from './ports/payment-provider.port';
@@ -25,8 +26,14 @@ function buildRegistry(mockAdapterEnabled: boolean): PaymentProviderRegistry {
     queryStatus: async (): Promise<ProviderResult> => ({ outcome: 'approved' }),
   };
   const mock = new MockPaymentProviderAdapter();
+  const qrLocal = new QRLocalPaymentProviderAdapter();
   const registrations = getPaymentProviderAdapters('test', mockAdapterEnabled).map((Adapter) => {
-    const adapter = Adapter === MockPaymentProviderAdapter ? mock : stripe;
+    const adapter =
+      Adapter === MockPaymentProviderAdapter
+        ? mock
+        : Adapter === QRLocalPaymentProviderAdapter
+          ? qrLocal
+          : stripe;
     return { adapterCode: adapter.metadata.id, adapter };
   });
 
@@ -39,19 +46,23 @@ describe('getPaymentProviderAdapters', () => {
   it('does not register the mock adapter when its flag is disabled', () => {
     expect(getPaymentProviderAdapters('development', false)).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
     ]);
   });
 
   it('registers the mock adapter only when its flag is enabled outside production', () => {
     expect(getPaymentProviderAdapters('development')).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
     ]);
     expect(getPaymentProviderAdapters('development', true)).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
       MockPaymentProviderAdapter,
     ]);
     expect(getPaymentProviderAdapters('test', true)).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
       MockPaymentProviderAdapter,
     ]);
   });
@@ -61,6 +72,7 @@ describe('getPaymentProviderAdapters', () => {
 
     expect(getPaymentProviderAdapters('production', true)).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
     ]);
 
     expect(warning).toHaveBeenCalledWith(
@@ -74,6 +86,7 @@ describe('getPaymentProviderAdapters', () => {
 
     expect(getPaymentProviderAdapters('production', false)).toEqual([
       StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
     ]);
     expect(warning).not.toHaveBeenCalled();
 
@@ -83,14 +96,16 @@ describe('getPaymentProviderAdapters', () => {
   it('does not resolve mock through the registry when the flag is off', () => {
     const registry = buildRegistry(false);
 
-    expect(registry.supportedAdapterCodes()).toEqual(['stripe']);
+    expect(registry.supportedAdapterCodes()).toEqual(['qr_local', 'stripe']);
     expect(registry.resolve('card').metadata.id).toBe('stripe');
+    expect(registry.resolve('qr').metadata.id).toBe('qr_local');
   });
 
   it('resolves the mock through the registry when the flag is on', () => {
     const registry = buildRegistry(true);
 
-    expect(registry.supportedAdapterCodes()).toEqual(['mock', 'stripe']);
+    expect(registry.supportedAdapterCodes()).toEqual(['mock', 'qr_local', 'stripe']);
     expect(registry.resolve('card')).toBeInstanceOf(MockPaymentProviderAdapter);
+    expect(registry.resolve('qr')).toBeInstanceOf(QRLocalPaymentProviderAdapter);
   });
 });

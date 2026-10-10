@@ -49,7 +49,7 @@ export interface QueryStatusInput {
   providerTransactionId: string;
 }
 
-export type ProviderOutcome = 'approved' | 'declined' | 'timeout' | 'error';
+export type ProviderOutcome = 'approved' | 'declined' | 'timeout' | 'error' | 'pending';
 
 export type PaymentProviderErrorCode =
   | 'card_declined'
