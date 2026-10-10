@@ -20,6 +20,12 @@ class EnvironmentVariables {
   NODE_ENV = 'development';
 
   @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'PAYMENT_MOCK_ADAPTER_ENABLED debe ser true o false.',
+  })
+  PAYMENT_MOCK_ADAPTER_ENABLED: 'true' | 'false' = 'false';
+
+  @IsOptional()
   @IsIn(['mailpit', 'resend'], {
     message: 'MAIL_PROVIDER debe ser mailpit o resend.',
   })

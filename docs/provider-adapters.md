@@ -31,11 +31,12 @@ adapter capability and does not by itself introduce asynchronous orchestration.
 
 ## Local mock
 
-The deterministic `MockPaymentProviderAdapter` is registered outside
-production and simulates approval without network access. Locally,
-`PAYMENT_PROVIDER_BINDINGS=card=mock` routes the existing `card` method through
-the mock. The Stripe adapter remains the default. The mock is excluded when
-`NODE_ENV=production`.
+The deterministic `MockPaymentProviderAdapter` is disabled by default and
+simulates approval without network access. Set
+`PAYMENT_MOCK_ADAPTER_ENABLED=true` outside production to register it, then set
+`PAYMENT_PROVIDER_BINDINGS=card=mock` to route the existing `card` method
+through the mock. The Stripe adapter remains the default. In production the
+mock is always excluded; requesting it with the enable flag logs a warning.
 
 ## Dashboard method selector
 

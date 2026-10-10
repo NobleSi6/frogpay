@@ -22,6 +22,24 @@ describe('validateEnvironment', () => {
     expect(typeof environment.PRISMA_TX_MAX_WAIT_MS).toBe('number');
   });
 
+  it('defaults the mock adapter flag to false and validates explicit values', () => {
+    const values = {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost/test',
+      JWT_SECRET: 'test-secret-with-at-least-32-characters',
+    };
+
+    expect(validateEnvironment(values).PAYMENT_MOCK_ADAPTER_ENABLED).toBe('false');
+    expect(validateEnvironment({
+      ...values,
+      PAYMENT_MOCK_ADAPTER_ENABLED: 'true',
+    }).PAYMENT_MOCK_ADAPTER_ENABLED).toBe('true');
+    expect(() => validateEnvironment({
+      ...values,
+      PAYMENT_MOCK_ADAPTER_ENABLED: 'yes',
+    })).toThrow('PAYMENT_MOCK_ADAPTER_ENABLED debe ser true o false.');
+  });
+
   it('requires a 32-byte hexadecimal encryption key in production', () => {
     const values = {
       NODE_ENV: 'production',

@@ -55,9 +55,9 @@ describe('ProviderAdaptersModule', () => {
     });
   });
 
-  it('registers the mock adapter outside production', () => {
-    expect(moduleRef.get(MockPaymentProviderAdapter, { strict: false })).toBeInstanceOf(
-      MockPaymentProviderAdapter,
-    );
+  it('does not register the mock adapter when its enable flag is off', () => {
+    expect(() =>
+      moduleRef.get(MockPaymentProviderAdapter, { strict: false }),
+    ).toThrow();
   });
 });
