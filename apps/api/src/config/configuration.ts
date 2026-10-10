@@ -1,6 +1,8 @@
 export interface AppConfig {
   nodeEnv: string;
   outboxPublisherEnabled: boolean;
+  qrExpirationJobEnabled: boolean;
+  qrExpirationJobIntervalSeconds: number;
   port: number;
   corsOrigin: string;
   frontendUrl: string;
@@ -25,6 +27,12 @@ export interface AppConfig {
 export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   outboxPublisherEnabled: resolveOutboxPublisherEnabled(),
+  qrExpirationJobEnabled: resolveQrExpirationJobEnabled(),
+  qrExpirationJobIntervalSeconds: resolvePositiveInteger(
+    process.env.QR_EXPIRATION_JOB_INTERVAL_SECONDS,
+    30,
+    'QR_EXPIRATION_JOB_INTERVAL_SECONDS',
+  ),
   port: parseInt(process.env.PORT || '4000', 10),
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -51,6 +59,23 @@ function resolveOutboxPublisherEnabled(): boolean {
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   return (process.env.NODE_ENV || 'development') === 'production';
+}
+
+function resolveQrExpirationJobEnabled(): boolean {
+  const raw = process.env.QR_EXPIRATION_JOB_ENABLED;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return (process.env.NODE_ENV || 'development') === 'production';
+}
+
+function resolvePositiveInteger(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined) return fallback;
+  if (!/^\d+$/.test(raw)) throw new Error(`${name} debe ser un entero positivo.`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} debe ser un entero positivo.`);
+  }
+  return value;
 }
 
 function createLocalRabbitUrl(): string {

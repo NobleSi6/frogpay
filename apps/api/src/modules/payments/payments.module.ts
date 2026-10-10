@@ -7,6 +7,7 @@ import { IdempotencyService } from './infrastructure/idempotency/idempotency.ser
 import { CreatePaymentUseCase } from './application/use-cases/create-payment.use-case';
 import { GetPaymentUseCase } from './application/use-cases/get-payment.use-case';
 import { PaymentSettlementService } from './application/use-cases/payment-settlement.service';
+import { PaymentQrExpirationJob } from './application/use-cases/payment-qr-expiration.job';
 import { ApiKeyAuthGuard } from './presentation/guards/api-key-auth.guard';
 import { PaymentsController } from './presentation/http/payments.controller';
 import { DashboardPaymentsController } from './presentation/http/dashboard-payments.controller';
@@ -20,6 +21,7 @@ import { DashboardPaymentsController } from './presentation/http/dashboard-payme
     CreatePaymentUseCase,
     GetPaymentUseCase,
     PaymentSettlementService,
+    PaymentQrExpirationJob,
     ApiKeyAuthGuard,
   ],
   exports: [

@@ -26,6 +26,24 @@ class EnvironmentVariables {
   PAYMENT_MOCK_ADAPTER_ENABLED: 'true' | 'false' = 'false';
 
   @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'QR_EXPIRATION_JOB_ENABLED debe ser true o false.',
+  })
+  QR_EXPIRATION_JOB_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_EXPIRATION_JOB_INTERVAL_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_EXPIRATION_JOB_INTERVAL_SECONDS debe ser mayor que cero.' })
+  QR_EXPIRATION_JOB_INTERVAL_SECONDS = 30;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_EXPIRATION_MINUTES debe ser un entero.' })
+  @Min(1, { message: 'QR_EXPIRATION_MINUTES debe ser mayor que cero.' })
+  QR_EXPIRATION_MINUTES = 15;
+
+  @IsOptional()
   @IsIn(['mailpit', 'resend'], {
     message: 'MAIL_PROVIDER debe ser mailpit o resend.',
   })
