@@ -58,12 +58,15 @@ export type PaymentProviderErrorCode =
   | 'incorrect_cvc'
   | 'processing_error'
   | 'provider_timeout'
-  | 'provider_unavailable';
+  | 'provider_unavailable'
+  | 'qr_expired';
 
 export interface ProviderResult {
   outcome: ProviderOutcome;
   providerTransactionId?: string;
   errorCode?: PaymentProviderErrorCode;
+  qrPayload?: string;
+  expiresAt?: Date;
 }
 
 export interface PaymentProviderPort {

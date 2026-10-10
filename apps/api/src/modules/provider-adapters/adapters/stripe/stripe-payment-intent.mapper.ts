@@ -18,6 +18,7 @@ export const AdapterErrorCode = {
   PROCESSING_ERROR: ERROR_CATALOG.processing_error.code,
   PROVIDER_TIMEOUT: ERROR_CATALOG.provider_timeout.code,
   PROVIDER_UNAVAILABLE: ERROR_CATALOG.provider_unavailable.code,
+  QR_EXPIRED: ERROR_CATALOG.qr_expired.code,
 } as const;
 
 /**
