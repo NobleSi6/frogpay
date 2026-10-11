@@ -48,6 +48,30 @@ the QR expiration job rejects it. Configure the job with
 `QR_EXPIRATION_JOB_INTERVAL_SECONDS`. The QR payload is local simulation data,
 not a request to an external QR provider.
 
+### QR simulator
+
+In non-production deployments, the QR simulator can settle a sandbox QR
+payment from the Dashboard with `POST /api/dashboard/payments/:id/simulate`
+(JWT, `OWNER` role, body `{ "result": "APPROVED" | "FAILED" }`) or through
+`POST /api/v1/test/simulators/qr-callback` (`X-Api-Key`, body
+`{ "payment_id": "<uuid>", "result": "APPROVED" | "FAILED" }`). The callback
+uses `payment_id` in snake_case and takes its tenant and environment from the
+API key. `QR_SIMULATORS_ENABLED` controls the non-production entry points;
+production deployments are rejected even if the flag is explicitly enabled.
+Production API keys and production payments are also rejected.
+
+Only pending QR sandbox payments are settled. `APPROVED` uses the standard
+payment settlement flow; `FAILED` rejects with `processing_error`. Repeated
+or already-final requests return the current status with `changed: false`
+without creating another event. An expired pending QR is left to the
+expiration job. The worker uses polling rather than RabbitMQ and approves
+mature, unexpired sandbox QR payments through the same atomic settlement
+service. Configure it with `QR_AUTO_CONFIRM_ENABLED`,
+`QR_AUTO_CONFIRM_SECONDS` (default `10`), and
+`QR_AUTO_CONFIRM_INTERVAL_SECONDS` (default `2`). Auto-confirm is disabled by
+default outside production and enabled by default in production, where it
+still only processes sandbox payments.
+
 ## Dashboard method selector
 
 `GET /api/dashboard/payment-methods` returns the configured methods' public

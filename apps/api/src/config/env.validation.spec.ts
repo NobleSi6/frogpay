@@ -108,6 +108,28 @@ describe('validateEnvironment', () => {
     })).toThrow('QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser un entero.');
   });
 
+  it('validates whether QR simulator endpoints are enabled', () => {
+    const values = {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost/test',
+      JWT_SECRET: 'test-secret-with-at-least-32-characters',
+    };
+
+    expect(validateEnvironment(values).QR_SIMULATORS_ENABLED).toBeUndefined();
+    expect(validateEnvironment({
+      ...values,
+      QR_SIMULATORS_ENABLED: 'true',
+    }).QR_SIMULATORS_ENABLED).toBe('true');
+    expect(validateEnvironment({
+      ...values,
+      QR_SIMULATORS_ENABLED: 'false',
+    }).QR_SIMULATORS_ENABLED).toBe('false');
+    expect(() => validateEnvironment({
+      ...values,
+      QR_SIMULATORS_ENABLED: 'yes',
+    })).toThrow('QR_SIMULATORS_ENABLED debe ser true o false.');
+  });
+
   it('requires a 32-byte hexadecimal encryption key in production', () => {
     const values = {
       NODE_ENV: 'production',
