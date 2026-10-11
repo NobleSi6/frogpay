@@ -1,5 +1,6 @@
 export interface AppConfig {
   nodeEnv: string;
+  qrSimulatorsEnabled: boolean;
   outboxPublisherEnabled: boolean;
   qrExpirationJobEnabled: boolean;
   qrExpirationJobIntervalSeconds: number;
@@ -26,6 +27,7 @@ export interface AppConfig {
 
 export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV || 'development',
+  qrSimulatorsEnabled: resolveQrSimulatorsEnabled(),
   outboxPublisherEnabled: resolveOutboxPublisherEnabled(),
   qrExpirationJobEnabled: resolveQrExpirationJobEnabled(),
   qrExpirationJobIntervalSeconds: resolvePositiveInteger(
@@ -59,6 +61,13 @@ function resolveOutboxPublisherEnabled(): boolean {
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   return (process.env.NODE_ENV || 'development') === 'production';
+}
+
+function resolveQrSimulatorsEnabled(): boolean {
+  const raw = process.env.QR_SIMULATORS_ENABLED;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return (process.env.NODE_ENV || 'development') !== 'production';
 }
 
 function resolveQrExpirationJobEnabled(): boolean {

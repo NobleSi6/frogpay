@@ -27,6 +27,12 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsIn(['true', 'false'], {
+    message: 'QR_SIMULATORS_ENABLED debe ser true o false.',
+  })
+  QR_SIMULATORS_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
     message: 'QR_EXPIRATION_JOB_ENABLED debe ser true o false.',
   })
   QR_EXPIRATION_JOB_ENABLED?: 'true' | 'false';
