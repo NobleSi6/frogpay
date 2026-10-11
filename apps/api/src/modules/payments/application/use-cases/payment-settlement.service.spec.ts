@@ -10,6 +10,7 @@ describe('PaymentSettlementService', () => {
   let tx: Record<string, any>;
   let withGlobalAccess: jest.Mock;
   let failOutbox: boolean;
+  let statusChangeMetadata: Record<string, unknown>;
 
   const paymentId = 'c31d6a11-c1e7-48bd-b7ce-b59ee3f5e081';
 
@@ -32,19 +33,25 @@ describe('PaymentSettlementService', () => {
     events = [];
     usage = null;
     failOutbox = false;
+    statusChangeMetadata = {};
     tx = {
+      $executeRaw: jest.fn(async (_strings: TemplateStringsArray, value: string) => {
+        statusChangeMetadata = JSON.parse(value) as Record<string, unknown>;
+      }),
       payment: {
         findUnique: jest.fn(async () => payment),
         updateMany: jest.fn(async ({ where, data }) => {
           if (payment.id !== where.id || payment.status !== where.status) return { count: 0 };
+          const previousStatus = payment.status;
           payment = { ...payment, ...data };
+          histories.push({
+            payment_id: payment.id,
+            tenant_id: payment.tenant_id,
+            previous_status: previousStatus,
+            new_status: payment.status,
+            metadata: statusChangeMetadata,
+          });
           return { count: 1 };
-        }),
-      },
-      payment_status_history: {
-        create: jest.fn(async ({ data }) => {
-          histories.push(data);
-          return data;
         }),
       },
       domain_event_outbox: {

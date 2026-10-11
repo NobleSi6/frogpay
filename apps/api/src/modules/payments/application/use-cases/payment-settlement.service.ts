@@ -47,6 +47,14 @@ export class PaymentSettlementService {
         Number(payment.tenant.plan?.commission_fixed ?? 0),
         Number(payment.tenant.plan?.commission_pct ?? 0),
       );
+      const historyMetadata = errorCode ? { errorCode } : {};
+      await tx.$executeRaw`
+        SELECT set_config(
+          'app.status_change_metadata',
+          ${JSON.stringify(historyMetadata)},
+          true
+        )
+      `;
       const changed = await tx.payment.updateMany({
         where: { id: paymentId, status: 'pending' },
         data: {
@@ -61,16 +69,6 @@ export class PaymentSettlementService {
       if (changed.count === 0) {
         return { outcome: 'unchanged', paymentId, reason: 'not_pending' };
       }
-
-      await tx.payment_status_history.create({
-        data: {
-          payment_id: paymentId,
-          tenant_id: payment.tenant_id,
-          previous_status: 'pending',
-          new_status: status,
-          metadata: errorCode ? { errorCode } : {},
-        },
-      });
 
       let eventType: string;
       let payload: Prisma.InputJsonObject;

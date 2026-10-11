@@ -38,6 +38,16 @@ simulates approval without network access. Set
 through the mock. The Stripe adapter remains the default. In production the
 mock is always excluded; requesting it with the enable flag logs a warning.
 
+## Local QR
+
+`QRLocalPaymentProviderAdapter` registers `qr` as an asynchronous method that
+does not require a payment token. It returns a simulated EMVCo `qrPayload` and
+an `expiresAt` timestamp; the payment remains `pending` until settlement or
+the QR expiration job rejects it. Configure the job with
+`QR_EXPIRATION_MINUTES`, `QR_EXPIRATION_JOB_ENABLED`, and
+`QR_EXPIRATION_JOB_INTERVAL_SECONDS`. The QR payload is local simulation data,
+not a request to an external QR provider.
+
 ## Dashboard method selector
 
 `GET /api/dashboard/payment-methods` returns the configured methods' public
