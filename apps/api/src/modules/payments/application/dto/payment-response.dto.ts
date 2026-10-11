@@ -8,8 +8,8 @@ export class PaymentResponseDto {
 
   @ApiProperty({
     example: 'approved',
-    enum: ['approved', 'rejected', 'failed'],
-    description: 'Estado final del intento de pago',
+    enum: ['pending', 'approved', 'rejected', 'failed'],
+    description: 'Estado actual del intento de pago',
   })
   status!: PaymentStatus;
 
@@ -61,4 +61,20 @@ export class PaymentResponseDto {
 
   @ApiProperty({ example: '2026-10-01T14:32:11.000Z' })
   updatedAt!: string;
+
+  @ApiProperty({
+    example: '000201010212...',
+    nullable: true,
+    required: false,
+    description: 'Payload EMVCo para pagos QR pendientes.',
+  })
+  qrPayload?: string | null;
+
+  @ApiProperty({
+    example: '2026-10-01T14:47:10.000Z',
+    nullable: true,
+    required: false,
+    description: 'Fecha de expiración del QR.',
+  })
+  expiresAt?: string | null;
 }

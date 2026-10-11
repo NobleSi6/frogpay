@@ -4,6 +4,7 @@ import {
   AuthorizeInput,
   CaptureInput,
   PaymentProviderPort,
+  ProviderMetadata,
   ProviderResult,
   QueryStatusInput,
 } from '../../ports/payment-provider.port';
@@ -32,6 +33,25 @@ import { STRIPE_PROVIDER_CONFIG, StripeProviderConfig } from './stripe-provider.
  */
 @Injectable()
 export class StripePaymentProviderAdapter implements PaymentProviderPort {
+  readonly metadata: ProviderMetadata = {
+    id: 'stripe',
+    displayName: 'Stripe',
+    methods: [
+      {
+        code: 'card',
+        label: 'Tarjeta',
+        processingMode: 'synchronous',
+        requiresPaymentToken: true,
+        fees: {
+          // MVP reference values; they do not affect the existing payment flow.
+          fixedAmount: '0.30',
+          variableBps: 290,
+          currency: 'USD',
+        },
+      },
+    ],
+  };
+
   private readonly logger = new Logger(StripePaymentProviderAdapter.name);
 
   constructor(

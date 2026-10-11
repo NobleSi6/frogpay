@@ -1,7 +1,7 @@
 import { ERROR_CATALOG } from './error-catalog';
 
 describe('ERROR_CATALOG', () => {
-  it('contains exactly the eleven public catalog codes', () => {
+  it('contains exactly the public catalog codes', () => {
     expect(Object.keys(ERROR_CATALOG).sort()).toEqual(
       [
         'card_declined',
@@ -14,6 +14,7 @@ describe('ERROR_CATALOG', () => {
         'processing_error',
         'provider_timeout',
         'provider_unavailable',
+        'qr_expired',
         'validation_error',
       ].sort(),
     );
@@ -31,5 +32,6 @@ describe('ERROR_CATALOG', () => {
     expect(ERROR_CATALOG.processing_error).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.provider_timeout).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.provider_unavailable).not.toHaveProperty('httpStatus');
+    expect(ERROR_CATALOG.qr_expired).not.toHaveProperty('httpStatus');
   });
 });

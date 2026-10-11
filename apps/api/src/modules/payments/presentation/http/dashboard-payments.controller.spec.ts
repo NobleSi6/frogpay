@@ -111,6 +111,45 @@ describe('DashboardPaymentsController', () => {
         controller.createTestPayment(authContext, 'not-a-uuid', validDto, mockResponse),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('accepts a QR payment request without a payment token', async () => {
+      const qrResponse: PaymentResponseDto = {
+        ...sampleResponse,
+        status: 'pending',
+        paymentMethod: 'qr',
+        commissionAmount: null,
+        netAmount: null,
+        providerTransactionId: 'FP0123456789ABCDEF',
+        qrPayload: '0002010102126304A1B2',
+        expiresAt: '2026-10-10T18:45:00.000Z',
+      };
+      (createPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        isReplay: false,
+        response: qrResponse,
+      });
+      const qrDto: CreatePaymentDto = {
+        amount: '250.00',
+        currency: 'BOB',
+        paymentMethod: 'qr',
+        merchantReference: 'test-order-qr',
+      };
+
+      const result = await controller.createTestPayment(
+        authContext,
+        validUuidKey,
+        qrDto,
+        mockResponse,
+      );
+
+      expect(createPaymentUseCase.execute).toHaveBeenCalledWith(
+        'tenant-456',
+        'sandbox',
+        validUuidKey,
+        qrDto,
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.CREATED);
+      expect(result).toEqual(qrResponse);
+    });
   });
 
   describe('getDetails', () => {
