@@ -33,6 +33,24 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsIn(['true', 'false'], {
+    message: 'QR_AUTO_CONFIRM_ENABLED debe ser true o false.',
+  })
+  QR_AUTO_CONFIRM_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_AUTO_CONFIRM_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_AUTO_CONFIRM_SECONDS debe ser mayor que cero.' })
+  QR_AUTO_CONFIRM_SECONDS = 10;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser mayor que cero.' })
+  QR_AUTO_CONFIRM_INTERVAL_SECONDS = 2;
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
     message: 'QR_EXPIRATION_JOB_ENABLED debe ser true o false.',
   })
   QR_EXPIRATION_JOB_ENABLED?: 'true' | 'false';

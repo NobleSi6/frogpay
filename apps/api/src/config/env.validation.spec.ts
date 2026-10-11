@@ -73,6 +73,41 @@ describe('validateEnvironment', () => {
     })).toThrow('QR_EXPIRATION_JOB_INTERVAL_SECONDS debe ser un entero.');
   });
 
+  it('validates QR auto-confirm flags and positive integer thresholds', () => {
+    const values = {
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://localhost/test',
+      JWT_SECRET: 'test-secret-with-at-least-32-characters',
+    };
+
+    expect(validateEnvironment(values)).toMatchObject({
+      QR_AUTO_CONFIRM_SECONDS: 10,
+      QR_AUTO_CONFIRM_INTERVAL_SECONDS: 2,
+    });
+    expect(validateEnvironment({
+      ...values,
+      QR_AUTO_CONFIRM_ENABLED: 'true',
+      QR_AUTO_CONFIRM_SECONDS: '15',
+      QR_AUTO_CONFIRM_INTERVAL_SECONDS: '3',
+    })).toMatchObject({
+      QR_AUTO_CONFIRM_ENABLED: 'true',
+      QR_AUTO_CONFIRM_SECONDS: 15,
+      QR_AUTO_CONFIRM_INTERVAL_SECONDS: 3,
+    });
+    expect(() => validateEnvironment({
+      ...values,
+      QR_AUTO_CONFIRM_ENABLED: 'yes',
+    })).toThrow('QR_AUTO_CONFIRM_ENABLED debe ser true o false.');
+    expect(() => validateEnvironment({
+      ...values,
+      QR_AUTO_CONFIRM_SECONDS: '0',
+    })).toThrow('QR_AUTO_CONFIRM_SECONDS debe ser mayor que cero.');
+    expect(() => validateEnvironment({
+      ...values,
+      QR_AUTO_CONFIRM_INTERVAL_SECONDS: '1.5',
+    })).toThrow('QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser un entero.');
+  });
+
   it('requires a 32-byte hexadecimal encryption key in production', () => {
     const values = {
       NODE_ENV: 'production',

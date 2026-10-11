@@ -4,11 +4,12 @@ import { ApiKeyAuthGuard } from '../payments/presentation/guards/api-key-auth.gu
 import { PaymentSimulationService } from './application/payment-simulation.service';
 import { DashboardPaymentSimulationController } from './presentation/http/dashboard-payment-simulation.controller';
 import { QrCallbackController } from './presentation/http/qr-callback.controller';
+import { PaymentQrAutoConfirmJob } from './application/payment-qr-auto-confirm.job';
 
 @Module({
   imports: [PaymentsModule],
   controllers: [DashboardPaymentSimulationController, QrCallbackController],
-  providers: [ApiKeyAuthGuard, PaymentSimulationService],
+  providers: [ApiKeyAuthGuard, PaymentSimulationService, PaymentQrAutoConfirmJob],
   exports: [PaymentSimulationService],
 })
 export class SimulatorsModule {}
