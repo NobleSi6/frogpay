@@ -895,6 +895,10 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       key: uniqueKey(),
     });
     const noCredentials = await postPayment({ key: uniqueKey() });
+    const jwtWithoutApiKey = await postPayment({
+      jwt: testFixture.jwt,
+      key: uniqueKey(),
+    });
     const invalidApiKey = await postPayment({
       apiKey: 'fp_test_invalid.invalid-secret',
       key: uniqueKey(),
@@ -966,10 +970,14 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     const missingPayment = await http
       .get(`/api/dashboard/payments/${uniqueKey()}`)
       .auth(testFixture.jwt, { type: 'bearer' });
+    const dashboardPaymentNoJwt = await http
+      .get(`/api/dashboard/payments/${String(onlyApiKey.body.id)}`);
+    const dashboardPaymentMethodsNoJwt = await http.get('/api/dashboard/payment-methods');
 
     const httpContract = [
       record('payments_only_api_key', onlyApiKey),
       record('payments_no_credentials', noCredentials),
+      record('payments_jwt_without_api_key', jwtWithoutApiKey),
       record('payments_invalid_api_key', invalidApiKey),
       record('idempotency_body_reused', reusedBody),
       record('idempotency_in_progress', inProgress),
@@ -981,11 +989,28 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       record('qr_callback_valid_api_key_foreign_payment', callbackValidKey),
       record('qr_callback_production_payment', callbackProduction),
       record('dashboard_get_missing_payment', missingPayment),
+      record('dashboard_get_payment_no_jwt', dashboardPaymentNoJwt),
+      record('dashboard_get_payment_methods_no_jwt', dashboardPaymentMethodsNoJwt),
     ];
     console.log(`HTTP_CONTRACT_AFTER=${JSON.stringify(httpContract)}`);
+    console.log(`HTTP_JSON_EVIDENCE=${JSON.stringify({
+      dashboardPaymentNoJwt: {
+        status: dashboardPaymentNoJwt.status,
+        body: dashboardPaymentNoJwt.body,
+      },
+      dashboardPaymentMethodsNoJwt: {
+        status: dashboardPaymentMethodsNoJwt.status,
+        body: dashboardPaymentMethodsNoJwt.body,
+      },
+      dashboardSimulationNoJwt: { status: dashboardNoJwt.status, body: dashboardNoJwt.body },
+      dashboardSimulationAdmin: { status: dashboardAdmin.status, body: dashboardAdmin.body },
+      dashboardForeignPayment: { status: dashboardForeign.status, body: dashboardForeign.body },
+      paymentJwtWithoutApiKey: { status: jwtWithoutApiKey.status, body: jwtWithoutApiKey.body },
+    })}`);
     expect(httpContract).toEqual([
       { name: 'payments_only_api_key', status: 201, code: null },
       { name: 'payments_no_credentials', status: 401, code: 'missing_api_key' },
+      { name: 'payments_jwt_without_api_key', status: 401, code: 'missing_api_key' },
       { name: 'payments_invalid_api_key', status: 401, code: 'invalid_api_key' },
       { name: 'idempotency_body_reused', status: 422, code: 'idempotency_key_reused' },
       { name: 'idempotency_in_progress', status: 409, code: 'idempotency_in_progress' },
@@ -997,6 +1022,8 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       { name: 'qr_callback_valid_api_key_foreign_payment', status: 404, code: 'payment_not_found' },
       { name: 'qr_callback_production_payment', status: 403, code: 'simulation_not_allowed' },
       { name: 'dashboard_get_missing_payment', status: 404, code: 'payment_not_found' },
+      { name: 'dashboard_get_payment_no_jwt', status: 401, code: 'unauthorized' },
+      { name: 'dashboard_get_payment_methods_no_jwt', status: 401, code: 'unauthorized' },
     ]);
   });
 });
