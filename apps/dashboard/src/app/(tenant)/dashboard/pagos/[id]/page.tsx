@@ -4,12 +4,19 @@ import { use } from 'react';
 import Link from 'next/link';
 import { usePaymentDetail } from '@/features/payments/hooks/usePaymentDetail';
 import { PaymentTimeline } from '@/features/payments/components/PaymentTimeline';
+import { WebhookDeliveriesTable } from '@/features/payments/components/WebhookDeliveriesTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, CreditCard, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, CreditCard, Landmark, QrCode, CheckCircle2, XCircle } from 'lucide-react';
 import { ApiError } from '@/lib/api-client';
 import { ErrorAlert } from '@/components/shared/error-alert';
 import { EnvironmentBadge } from '@/components/shared/environment-indicator';
+
+const paymentMethodLabels = {
+  card: 'Tarjeta',
+  qr: 'Pago con QR',
+  bank_transfer: 'Transferencia bancaria',
+} as const;
 
 export default function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -116,8 +123,14 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Método de Pago</p>
               <div className="flex items-center gap-2 mt-1">
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
-                <p className="font-semibold text-foreground">Tarjeta {payment.paymentMethod}</p>
+                {payment.paymentMethod === 'qr' ? (
+                  <QrCode aria-hidden className="h-4 w-4 text-muted-foreground" />
+                ) : payment.paymentMethod === 'bank_transfer' ? (
+                  <Landmark aria-hidden className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <CreditCard aria-hidden className="h-4 w-4 text-muted-foreground" />
+                )}
+                <p className="font-semibold text-foreground">{paymentMethodLabels[payment.paymentMethod]}</p>
               </div>
             </div>
 
@@ -143,6 +156,8 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
           <PaymentTimeline events={payment.timeline || []} />
         </div>
       </div>
+
+      <WebhookDeliveriesTable deliveries={[]} />
     </div>
   );
 }

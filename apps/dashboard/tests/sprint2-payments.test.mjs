@@ -30,6 +30,8 @@ test("payment retries reuse the supplied idempotency key and identical request b
   };
   const payments = load("features/payments/services/payments.service.ts", {
     "@/lib/api-client": { apiRequest },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: false },
+    "./bank-transfer.service": { getMockBankTransfer: () => undefined },
   });
   const attempt = {
     amount: 100,
@@ -55,6 +57,83 @@ test("payment retries reuse the supplied idempotency key and identical request b
   });
 });
 
+test("QR payments can be created, viewed and simulated in demo mode without the API", async () => {
+  const payments = load("features/payments/services/payments.service.ts", {
+    "@/lib/api-client": {
+      apiRequest: async () => {
+        throw new Error("Demo QR payments must not call the API.");
+      },
+    },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: true },
+    "./bank-transfer.service": { getMockBankTransfer: () => undefined },
+  });
+
+  const created = await payments.paymentsService.createQrPayment({
+    amount: 42.5,
+    currency: "BOB",
+    idempotencyKey: "qr-attempt-uuid",
+  });
+
+  assert.equal(created.paymentMethod, "qr");
+  assert.equal(created.status, "pending");
+  assert.ok(created.qrPayload);
+  assert.ok(created.expiresAt);
+
+  const pending = await payments.paymentsService.getPaymentById(created.id);
+  assert.equal(pending.status, "PENDING");
+  assert.equal(pending.amount, 42.5);
+  assert.equal(pending.qrPayload, created.qrPayload);
+
+  await payments.paymentsService.simulateQrPayment(created.id, "APPROVED");
+  const approved = await payments.paymentsService.getPaymentById(created.id);
+  assert.equal(approved.status, "APPROVED");
+  assert.equal(approved.timeline.at(-1).status, "approved");
+});
+
+test("bank transfers run entirely in the sandbox mock without calling the API", async () => {
+  const imports = {};
+  const bankTransfers = load("features/payments/services/bank-transfer.service.ts", imports);
+  const created = await bankTransfers.bankTransferService.createBankTransfer({
+    amount: 57.25,
+    currency: "BOB",
+    idempotencyKey: "bank-attempt-uuid",
+  });
+
+  assert.equal(created.paymentMethod, "bank_transfer");
+  assert.equal(created.status, "pending");
+  assert.equal(created.bankInstructions.amount, "57.25 BOB");
+  assert.equal(await bankTransfers.bankTransferService.getBankTransferStatus(created.id), "PENDING");
+
+  await bankTransfers.bankTransferService.simulateBankDeposit(created.id, "EXACT");
+  assert.equal(await bankTransfers.bankTransferService.getBankTransferStatus(created.id), "APPROVED");
+
+  const rejectedTransfer = await bankTransfers.bankTransferService.createBankTransfer({
+    amount: 12,
+    currency: "BOB",
+    idempotencyKey: "bank-rejected-attempt",
+  });
+  await bankTransfers.bankTransferService.simulateBankDeposit(rejectedTransfer.id, "DIFFERENT_AMOUNT");
+  assert.equal(await bankTransfers.bankTransferService.getBankTransferStatus(rejectedTransfer.id), "REJECTED");
+
+  const unmatchedTransfer = await bankTransfers.bankTransferService.createBankTransfer({
+    amount: 8,
+    currency: "BOB",
+    idempotencyKey: "bank-unmatched-attempt",
+  });
+  await bankTransfers.bankTransferService.simulateBankDeposit(unmatchedTransfer.id, "UNKNOWN_REFERENCE");
+  assert.equal(await bankTransfers.bankTransferService.getBankTransferStatus(unmatchedTransfer.id), "PENDING");
+
+  const payments = load("features/payments/services/payments.service.ts", {
+    "./bank-transfer.service": bankTransfers,
+    "@/lib/api-client": { apiRequest: async () => { throw new Error("Mock transfer details must not call the API."); } },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: false },
+  });
+  const detail = await payments.paymentsService.getPaymentById(created.id);
+  assert.equal(detail.paymentMethod, "bank_transfer");
+  assert.equal(detail.status, "APPROVED");
+  assert.equal(detail.amount, 57.25);
+});
+
 test("payment details preserve a failed result and its API error code", async () => {
   const apiRequest = async () => ({
     id: "pay_123",
@@ -73,6 +152,8 @@ test("payment details preserve a failed result and its API error code", async ()
   });
   const payments = load("features/payments/services/payments.service.ts", {
     "@/lib/api-client": { apiRequest },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: false },
+    "./bank-transfer.service": { getMockBankTransfer: () => undefined },
   });
 
   const detail = await payments.paymentsService.getPaymentById("pay_123");
