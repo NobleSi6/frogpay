@@ -2,14 +2,34 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'failed';
 
+export class BankInstructionsDto {
+  @ApiProperty({ example: 'Banco FrogPay Simulado' })
+  bankName!: string;
+
+  @ApiProperty({ example: '10000012345' })
+  accountNumber!: string;
+
+  @ApiProperty({ example: 'FrogPay Bolivia S.R.L.' })
+  accountHolder!: string;
+
+  @ApiProperty({ example: '150.00' })
+  amount!: string;
+
+  @ApiProperty({ example: 'BOB' })
+  currency!: string;
+
+  @ApiProperty({ example: 'BT-2026-A81F92' })
+  reference!: string;
+}
+
 export class PaymentResponseDto {
   @ApiProperty({ example: '6f1b2e34-5678-90ab-cdef-1234567890ab' })
   id!: string;
 
   @ApiProperty({
     example: 'approved',
-    enum: ['approved', 'rejected', 'failed'],
-    description: 'Estado final del intento de pago',
+    enum: ['pending', 'approved', 'rejected', 'failed'],
+    description: 'Estado del intento de pago',
   })
   status!: PaymentStatus;
 
@@ -31,7 +51,7 @@ export class PaymentResponseDto {
   @ApiProperty({
     example: '5.25',
     nullable: true,
-    description: 'Comisión calculada según el plan del tenant. Null si el pago fue rechazado o falló.',
+    description: 'Comisión calculada según el plan del tenant. Null si el pago no fue aprobado.',
   })
   commissionAmount!: string | null;
 
@@ -45,7 +65,7 @@ export class PaymentResponseDto {
   @ApiProperty({
     example: 'pi_3Nk000000000000000000000',
     nullable: true,
-    description: 'ID de la transacción devuelto por la pasarela externa (ej. Stripe)',
+    description: 'ID de la transacción devuelto por la pasarela externa o referencia generada',
   })
   providerTransactionId!: string | null;
 
@@ -55,6 +75,27 @@ export class PaymentResponseDto {
     description: 'Código de error estandarizado del catálogo de errores si el pago fue rechazado o falló.',
   })
   errorCode!: string | null;
+
+  @ApiProperty({
+    example: '2026-10-12T20:00:00.000Z',
+    nullable: true,
+    description: 'Fecha de vencimiento en formato ISO 8601 para pagos pendientes (transferencia o QR).',
+  })
+  expiresAt?: string | null;
+
+  @ApiProperty({
+    type: BankInstructionsDto,
+    nullable: true,
+    description: 'Instrucciones bancarias para pagos por transferencia.',
+  })
+  bankInstructions?: BankInstructionsDto | null;
+
+  @ApiProperty({
+    example: null,
+    nullable: true,
+    description: 'Payload EMVCo para pagos con código QR.',
+  })
+  qrPayload?: string | null;
 
   @ApiProperty({ example: '2026-10-01T14:32:10.000Z' })
   createdAt!: string;

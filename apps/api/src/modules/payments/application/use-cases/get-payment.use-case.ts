@@ -48,6 +48,9 @@ export class GetPaymentUseCase {
         netAmount: payment.net_amount ? String(payment.net_amount) : null,
         providerTransactionId: payment.provider_transaction_id ?? null,
         errorCode: payment.error_code ?? null,
+        expiresAt: payment.expires_at ? payment.expires_at.toISOString() : null,
+        bankInstructions: payment.bank_instructions ? (payment.bank_instructions as any) : null,
+        qrPayload: payment.qr_payload ?? null,
         createdAt: payment.created_at.toISOString(),
         updatedAt: payment.updated_at.toISOString(),
         statusHistory: payment.payment_status_history.map((history) => ({

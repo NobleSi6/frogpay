@@ -7,6 +7,10 @@ import { StripeCredentialsService } from './application/stripe-credentials.servi
 import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import {
+  BankTransferLocalAdapter,
+  BANK_TRANSFER_ADAPTER_CODE,
+} from './adapters/bank-transfer/bank-transfer.adapter';
+import {
   STRIPE_ADAPTER_CODE,
   stripeClientProvider,
 } from './adapters/stripe/stripe-client.provider';
@@ -47,19 +51,24 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
     },
     stripeClientProvider,
     StripePaymentProviderAdapter,
+    BankTransferLocalAdapter,
     {
       provide: PAYMENT_PROVIDER_PORT,
       useExisting: StripePaymentProviderAdapter,
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, StripePaymentProviderAdapter],
+      inject: [ConfigService, StripePaymentProviderAdapter, BankTransferLocalAdapter],
       useFactory: (
         config: ConfigService,
         stripeAdapter: StripePaymentProviderAdapter,
+        bankTransferAdapter: BankTransferLocalAdapter,
       ): PaymentProviderRegistry => {
         const registry = new PaymentProviderRegistry(
-          [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter }],
+          [
+            { adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter },
+            { adapterCode: BANK_TRANSFER_ADAPTER_CODE, adapter: bankTransferAdapter },
+          ],
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();
@@ -76,6 +85,7 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
     CredentialsEncryptionService,
     PAYMENT_PROVIDER_PORT,
     PaymentProviderRegistry,
+    BankTransferLocalAdapter,
   ],
 })
 export class ProviderAdaptersModule {}

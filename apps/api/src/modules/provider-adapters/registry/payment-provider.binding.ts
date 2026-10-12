@@ -71,6 +71,7 @@ export class InvalidPaymentProviderBindingsError extends Error {
  */
 export const DEFAULT_PAYMENT_PROVIDER_BINDINGS: readonly PaymentProviderBinding[] = [
   { paymentMethod: 'card', adapterCode: 'stripe' },
+  { paymentMethod: 'bank_transfer', adapterCode: 'bank_transfer_local' },
 ];
 
 /**

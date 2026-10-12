@@ -390,4 +390,38 @@ describe('CreatePaymentUseCase', () => {
 
     saveSpy.mockRestore();
   });
+
+  it('creates a bank_transfer payment with status pending and bankInstructions', async () => {
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'pending',
+      providerTransactionId: 'BT-2026-A81F92',
+      expiresAt: new Date('2026-10-12T20:00:00.000Z'),
+      bankInstructions: {
+        bankName: 'Banco FrogPay Simulado',
+        accountNumber: '10000012345',
+        accountHolder: 'FrogPay Bolivia S.R.L.',
+        amount: '150.00',
+        currency: 'BOB',
+        reference: 'BT-2026-A81F92',
+      },
+    });
+
+    const bankDto: CreatePaymentDto = {
+      amount: '150.00',
+      currency: 'BOB',
+      paymentMethod: 'bank_transfer',
+      merchantReference: 'ORDEN-BT-101',
+    };
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, bankDto);
+
+    expect(result.response.status).toBe('pending');
+    expect(result.response.bankInstructions?.reference).toBe('BT-2026-A81F92');
+    expect(result.response.providerTransactionId).toBe('BT-2026-A81F92');
+    expect(result.response.expiresAt).toBeDefined();
+    expect(result.response.commissionAmount).toBeNull();
+    expect(planUsage).toBeNull();
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0].event_type).toBe('pago.creado');
+  });
 });

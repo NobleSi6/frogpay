@@ -1,7 +1,8 @@
-import { BadRequestException, HttpStatus } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpStatus } from '@nestjs/common';
 import { DashboardPaymentsController } from './dashboard-payments.controller';
 import type { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import type { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
+import type { BankReconciliationService } from '../../application/services/bank-reconciliation.service';
 import type { AuthenticatedTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import type { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import type { PaymentResponseDto } from '../../application/dto/payment-response.dto';
@@ -11,6 +12,7 @@ describe('DashboardPaymentsController', () => {
   let controller: DashboardPaymentsController;
   let createPaymentUseCase: jest.Mocked<Partial<CreatePaymentUseCase>>;
   let getPaymentUseCase: jest.Mocked<Partial<GetPaymentUseCase>>;
+  let bankReconciliationService: jest.Mocked<Partial<BankReconciliationService>>;
 
   const authContext: AuthenticatedTenantContext = {
     userId: 'user-123',
@@ -72,6 +74,9 @@ describe('DashboardPaymentsController', () => {
     getPaymentUseCase = {
       execute: jest.fn(),
     };
+    bankReconciliationService = {
+      reconcile: jest.fn(),
+    };
     mockResponse = {
       status: jest.fn().mockReturnThis(),
     };
@@ -79,6 +84,7 @@ describe('DashboardPaymentsController', () => {
     controller = new DashboardPaymentsController(
       createPaymentUseCase as CreatePaymentUseCase,
       getPaymentUseCase as GetPaymentUseCase,
+      bankReconciliationService as BankReconciliationService,
     );
   });
 
@@ -121,6 +127,49 @@ describe('DashboardPaymentsController', () => {
 
       expect(getPaymentUseCase.execute).toHaveBeenCalledWith('tenant-456', validPaymentId);
       expect(result).toEqual(sampleDetailsResponse);
+    });
+  });
+
+  describe('simulateDeposit', () => {
+    it('ejecuta conciliación simulada para pago en sandbox con modo exact', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'sandbox',
+        providerTransactionId: 'BT-2026-REF1',
+        amount: '150.00',
+        currency: 'BOB',
+      });
+
+      (bankReconciliationService.reconcile as jest.Mock).mockResolvedValue({
+        status: 'reconciled',
+        depositId: 'dep-1',
+        paymentId: validPaymentId,
+      });
+
+      const result = await controller.simulateDeposit(authContext, validPaymentId, {
+        mode: 'exact',
+      });
+
+      expect(result.status).toBe('reconciled');
+      expect(bankReconciliationService.reconcile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-456',
+          reference: 'BT-2026-REF1',
+          amount: '150.00',
+          currency: 'BOB',
+        }),
+      );
+    });
+
+    it('rechaza con ForbiddenException si el pago es de producción', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'production',
+      });
+
+      await expect(
+        controller.simulateDeposit(authContext, validPaymentId, { mode: 'exact' }),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

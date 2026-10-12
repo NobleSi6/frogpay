@@ -184,6 +184,9 @@ export class CreatePaymentUseCase {
         status: PaymentStatus;
         providerTransactionId: string | null;
         errorCode: string | null;
+        expiresAt: Date | null;
+        bankInstructions: any | null;
+        qrPayload: string | null;
       };
       try {
         const provider = this.paymentProviders.resolve(dto.paymentMethod);
@@ -195,12 +198,17 @@ export class CreatePaymentUseCase {
         });
         providerResult = {
           status:
-            result.outcome === 'approved'
-              ? 'approved'
-              : result.outcome === 'declined'
-                ? 'rejected'
-                : 'failed',
+            result.outcome === 'pending'
+              ? 'pending'
+              : result.outcome === 'approved'
+                ? 'approved'
+                : result.outcome === 'declined'
+                  ? 'rejected'
+                  : 'failed',
           providerTransactionId: result.providerTransactionId ?? null,
+          expiresAt: result.expiresAt ?? null,
+          bankInstructions: result.bankInstructions ?? null,
+          qrPayload: result.qrPayload ?? null,
           errorCode:
             result.errorCode ??
             (result.outcome === 'declined'
@@ -214,6 +222,9 @@ export class CreatePaymentUseCase {
           status: PaymentStatus;
           providerTransactionId: string | null;
           errorCode: string | null;
+          expiresAt: Date | null;
+          bankInstructions: any | null;
+          qrPayload: string | null;
         };
       } catch (error) {
         this.logger.error(`Error o timeout llamando al proveedor de pago:`, error);
@@ -221,6 +232,9 @@ export class CreatePaymentUseCase {
           status: 'failed',
           providerTransactionId: null,
           errorCode: 'provider_timeout',
+          expiresAt: null,
+          bankInstructions: null,
+          qrPayload: null,
         };
       }
 
@@ -242,9 +256,16 @@ export class CreatePaymentUseCase {
             error_code: providerResult.errorCode ?? null,
             commission_amount: isApproved ? commissionAmount : null,
             net_amount: isApproved ? netAmount : null,
+            expires_at: providerResult.expiresAt ?? undefined,
+            bank_instructions: providerResult.bankInstructions ?? undefined,
+            qr_payload: providerResult.qrPayload ?? undefined,
             updated_at: new Date(),
           },
         });
+
+        if (finalStatus === 'pending') {
+          return payment;
+        }
 
         // Historial de cambio de estado
         await tx.payment_status_history.create({
@@ -347,6 +368,9 @@ export class CreatePaymentUseCase {
         netAmount: isApproved ? netAmount : null,
         providerTransactionId: providerResult.providerTransactionId ?? null,
         errorCode: providerResult.errorCode ?? null,
+        expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+        bankInstructions: providerResult.bankInstructions ?? null,
+        qrPayload: providerResult.qrPayload ?? null,
         createdAt: updatedPayment.created_at.toISOString(),
         updatedAt: updatedPayment.updated_at.toISOString(),
       };

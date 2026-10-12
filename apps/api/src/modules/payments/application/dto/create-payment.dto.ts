@@ -32,14 +32,14 @@ export class CreatePaymentDto {
   currency!: string;
 
   @ApiProperty({
-    description: 'Método de pago. Sprint 2 solo acepta "card".',
-    example: 'card',
-    enum: ['card'],
+    description: 'Método de pago (card, bank_transfer, qr).',
+    example: 'bank_transfer',
+    enum: ['card', 'bank_transfer', 'qr'],
   })
   @IsString({ message: 'paymentMethod debe ser una cadena.' })
   @IsNotEmpty({ message: 'paymentMethod es obligatorio.' })
-  @IsIn(['card'], {
-    message: 'paymentMethod solo soporta "card" en este sprint.',
+  @IsIn(['card', 'bank_transfer', 'qr'], {
+    message: 'paymentMethod no es válido o no está soportado.',
   })
   paymentMethod!: string;
 

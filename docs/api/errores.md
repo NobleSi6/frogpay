@@ -29,6 +29,7 @@ excepción HTTP, ese contrato se rompe.
 | `idempotency_in_progress` | 409 | Misma `Idempotency-Key`, solicitud original aún en `PROCESSING`. |
 | `idempotency_key_reused` | 422 | Misma `Idempotency-Key`, cuerpo con hash distinto. |
 | `plan_limit_exceeded` | 429 | El tenant superó el límite de volumen de su plan (RF-20). |
+| `invalid_state_transition` | 422 | Se intentó realizar una transición o conciliación sobre un pago que ya no se encuentra en estado `pending`. |
 
 Forma de la respuesta, igual para los 4:
 
@@ -57,6 +58,10 @@ Van en `payment.errorCode` cuando `payment.status` es `rejected` o
 | `processing_error` | `rejected` | Error genérico del lado de Stripe al procesar (no es rechazo del banco). |
 | `provider_timeout` | `failed` | El adapter no obtuvo respuesta de Stripe dentro de los 3000 ms (`ProviderResult.outcome === 'timeout'`). |
 | `provider_unavailable` | `failed` | Falla de conexión con Stripe, sin respuesta alguna (`ProviderResult.outcome === 'error'`). |
+| `qr_expired` | `rejected` | El pago QR venció sin recibir confirmación del cliente dentro del plazo (`QR_EXPIRATION_MINUTES`). |
+| `transfer_expired` | `rejected` | El pago por transferencia bancaria venció sin recibir depósito válido (`BANK_TRANSFER_EXPIRATION_HOURS`). |
+| `amount_mismatch` | `rejected` | El depósito recibido tiene la referencia correcta pero el monto no coincide con el pago esperado. El depósito queda registrado para revisión. |
+| `reference_not_found` | N/A (Depósito) | No existe un pago pendiente con la referencia del depósito. El depósito se registra como no conciliado (`unmatched`) y ningún pago cambia de estado. |
 
 El adapter asigna `provider_timeout` a los timeouts y
 `provider_unavailable` a los errores de infraestructura. Los estados de
