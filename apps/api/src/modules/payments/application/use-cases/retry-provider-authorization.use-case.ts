@@ -1,7 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
-import type { ProviderResult } from '../../../provider-adapters/ports/payment-provider.port';
+import type {
+  PaymentProviderErrorCode,
+  ProviderResult,
+} from '../../../provider-adapters/ports/payment-provider.port';
 import {
   PROVIDER_RETRY_SCHEDULER,
   ProviderRetryMessage,
@@ -75,7 +78,10 @@ export class RetryProviderAuthorizationUseCase {
 
     const errorCode = result.errorCode ?? (result.outcome === 'timeout' ? 'provider_timeout' : 'provider_unavailable');
     if (result.outcome === 'declined' || !RETRYABLE_PROVIDER_ERRORS.includes(errorCode)) {
-      await this.settlement.reject(message.paymentId, result.errorCode ?? 'processing_error');
+      await this.settlement.reject(
+        message.paymentId,
+        (result.errorCode ?? 'processing_error') as PaymentProviderErrorCode,
+      );
       return 'rejected';
     }
 
