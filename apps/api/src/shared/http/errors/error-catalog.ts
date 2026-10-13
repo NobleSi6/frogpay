@@ -51,6 +51,18 @@ export const ERROR_CATALOG = {
     code: 'qr_expired',
     message: 'El código QR del pago venció.',
   },
+  transfer_expired: {
+    code: 'transfer_expired',
+    message: 'La transferencia bancaria venció sin recibir depósito.',
+  },
+  amount_mismatch: {
+    code: 'amount_mismatch',
+    message: 'El monto del depósito no coincide con el monto del pago.',
+  },
+  reference_not_found: {
+    code: 'reference_not_found',
+    message: 'La referencia bancaria no corresponde a ningún pago pendiente.',
+  },
 } as const;
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;

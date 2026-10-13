@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -132,6 +133,7 @@ export class DashboardPaymentsController {
   }
 
   @Post(':id/simulate-deposit')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Simular depósito bancario para un pago desde el Dashboard (TSK-BANK-303)',
     description:

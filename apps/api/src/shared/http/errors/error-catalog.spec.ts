@@ -15,6 +15,9 @@ describe('ERROR_CATALOG', () => {
         'provider_timeout',
         'provider_unavailable',
         'qr_expired',
+        'transfer_expired',
+        'amount_mismatch',
+        'reference_not_found',
         'validation_error',
       ].sort(),
     );
@@ -33,5 +36,8 @@ describe('ERROR_CATALOG', () => {
     expect(ERROR_CATALOG.provider_timeout).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.provider_unavailable).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.qr_expired).not.toHaveProperty('httpStatus');
+    expect(ERROR_CATALOG.transfer_expired).not.toHaveProperty('httpStatus');
+    expect(ERROR_CATALOG.amount_mismatch).not.toHaveProperty('httpStatus');
+    expect(ERROR_CATALOG.reference_not_found).not.toHaveProperty('httpStatus');
   });
 });
