@@ -20,13 +20,15 @@ import {
   parsePaymentProviderBindings,
 } from './registry/payment-provider.binding';
 import { PaymentProviderRegistry } from './registry/payment-provider.registry';
+import { CircuitBreakerModule } from './resilience/circuit-breaker.module';
+import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
 
 /**
  * Proveedores disponibles y credenciales de Stripe administradas por tenant.
  * Payments selecciona el adaptador usando PaymentProviderRegistry.
  */
 @Module({
-  imports: [EventBusModule],
+  imports: [EventBusModule, CircuitBreakerModule],
   controllers: [StripeCredentialsController],
   providers: [
     AdapterEventProbe,
@@ -53,13 +55,15 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, StripePaymentProviderAdapter],
+      inject: [ConfigService, StripePaymentProviderAdapter, CircuitBreakerRegistry],
       useFactory: (
         config: ConfigService,
         stripeAdapter: StripePaymentProviderAdapter,
+        breakers: CircuitBreakerRegistry,
       ): PaymentProviderRegistry => {
+        // Cada adaptador se registra envuelto en su propio circuito (TSK-DEV2-304).
         const registry = new PaymentProviderRegistry(
-          [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter }],
+          [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: breakers.protect(STRIPE_ADAPTER_CODE, stripeAdapter) }],
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();
@@ -76,6 +80,7 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
     CredentialsEncryptionService,
     PAYMENT_PROVIDER_PORT,
     PaymentProviderRegistry,
+    CircuitBreakerModule,
   ],
 })
 export class ProviderAdaptersModule {}

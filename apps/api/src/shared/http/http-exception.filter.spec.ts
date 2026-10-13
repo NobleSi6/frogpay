@@ -1,4 +1,4 @@
-import { ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
 import { ERROR_CATALOG } from './errors/error-catalog';
 import { IdempotencyInProgressError } from './errors/idempotency-in-progress-error';
 import { IdempotencyKeyReusedError } from './errors/idempotency-key-reused-error';
@@ -75,6 +75,20 @@ describe('HttpExceptionFilter', () => {
       details: validationMessages,
       requestId: 'req_test_123',
     });
+  });
+
+  it('respeta el código HTTP de NotFound, Conflict y Forbidden en lugar de devolver 500', () => {
+    const cases: Array<[Error, number, string]> = [
+      [new NotFoundException({ code: 'not_found', message: 'No existe' }), 404, 'not_found'],
+      [new ConflictException({ code: 'invalid_state_transition', message: 'Estado inválido' }), 409, 'invalid_state_transition'],
+      [new ForbiddenException(), 403, 'forbidden'],
+    ];
+    for (const [exception, httpStatus, code] of cases) {
+      const { host, json, status } = createHost();
+      filter.catch(exception, host);
+      expect(status).toHaveBeenCalledWith(httpStatus);
+      expect(json).toHaveBeenCalledWith(expect.objectContaining({ code, requestId: 'req_test_123' }));
+    }
   });
 
   it('hides unrecognized errors from the response and logs the real error', () => {
