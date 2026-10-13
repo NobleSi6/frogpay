@@ -47,6 +47,10 @@ export const ERROR_CATALOG = {
     code: 'provider_unavailable',
     message: 'El proveedor de pagos no está disponible.',
   },
+  qr_expired: {
+    code: 'qr_expired',
+    message: 'El código QR del pago venció.',
+  },
 } as const;
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;

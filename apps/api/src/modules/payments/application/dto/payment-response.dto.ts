@@ -29,7 +29,7 @@ export class PaymentResponseDto {
   @ApiProperty({
     example: 'approved',
     enum: ['pending', 'approved', 'rejected', 'failed'],
-    description: 'Estado del intento de pago',
+    description: 'Estado actual del intento de pago',
   })
   status!: PaymentStatus;
 

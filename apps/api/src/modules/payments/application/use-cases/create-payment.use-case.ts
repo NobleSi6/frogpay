@@ -11,8 +11,15 @@ import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
+import type {
+  BankTransferInstructions,
+  PaymentMethodCapability,
+} from '../../../provider-adapters/ports/payment-provider.port';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
+import { calculatePaymentAmounts } from './payment-amount-calculator';
 
 export interface CreatePaymentExecutionResult {
   isReplay: boolean;
@@ -27,7 +34,10 @@ export class CreatePaymentUseCase {
     private readonly tenantContext: PrismaTenantContextService,
     private readonly idempotency: IdempotencyService,
     @Inject(PaymentProviderRegistry)
-    private readonly paymentProviders: Pick<PaymentProviderRegistry, 'resolve'>,
+    private readonly paymentProviders: Pick<
+      PaymentProviderRegistry,
+      'resolve' | 'capabilityOf'
+    >,
   ) {}
 
   async execute(
@@ -36,6 +46,24 @@ export class CreatePaymentUseCase {
     idempotencyKey: string,
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentExecutionResult> {
+    let capability: PaymentMethodCapability;
+    try {
+      capability = this.paymentProviders.capabilityOf(dto.paymentMethod);
+    } catch (error) {
+      if (error instanceof UnsupportedPaymentMethodError) {
+        throw new ValidationError({
+          field: 'paymentMethod',
+          value: dto.paymentMethod,
+          supportedMethods: error.supportedPaymentMethods,
+        });
+      }
+      throw error;
+    }
+
+    if (capability.requiresPaymentToken && !dto.paymentToken) {
+      throw new ValidationError({ field: 'paymentToken', reason: 'required' });
+    }
+
     const bodyHash = this.idempotency.computeCanonicalBodyHash(dto);
 
     // 1. Reclamar clave de idempotencia atómicamente en Redis
@@ -99,10 +127,7 @@ export class CreatePaymentUseCase {
           // Calcular comisión según el plan
           const commFixed = plan ? Number(plan.commission_fixed) : 0;
           const commPct = plan ? Number(plan.commission_pct) : 0;
-          const calculatedCommission = Number(
-            (requestedAmount * commPct + commFixed).toFixed(2),
-          );
-          const calculatedNet = Number((requestedAmount - calculatedCommission).toFixed(2));
+          const amounts = calculatePaymentAmounts(requestedAmount, commFixed, commPct);
 
           // Obtener método de pago y proveedor
           const paymentMethod = await tx.payment_method.findUnique({
@@ -174,8 +199,8 @@ export class CreatePaymentUseCase {
 
           return {
             paymentId: payment.id,
-            commissionAmount: calculatedCommission.toFixed(2),
-            netAmount: calculatedNet.toFixed(2),
+            commissionAmount: amounts.commissionAmount,
+            netAmount: amounts.netAmount,
           };
         });
 
@@ -185,7 +210,7 @@ export class CreatePaymentUseCase {
         providerTransactionId: string | null;
         errorCode: string | null;
         expiresAt: Date | null;
-        bankInstructions: any | null;
+        bankInstructions: BankTransferInstructions | null;
         qrPayload: string | null;
       };
       try {
@@ -223,7 +248,7 @@ export class CreatePaymentUseCase {
           providerTransactionId: string | null;
           errorCode: string | null;
           expiresAt: Date | null;
-          bankInstructions: any | null;
+          bankInstructions: BankTransferInstructions | null;
           qrPayload: string | null;
         };
       } catch (error) {
@@ -231,10 +256,10 @@ export class CreatePaymentUseCase {
         providerResult = {
           status: 'failed',
           providerTransactionId: null,
-          errorCode: 'provider_timeout',
-          expiresAt: null,
-          bankInstructions: null,
           qrPayload: null,
+          expiresAt: null,
+          errorCode: 'provider_timeout',
+          bankInstructions: null,
         };
       }
 
@@ -257,7 +282,16 @@ export class CreatePaymentUseCase {
             commission_amount: isApproved ? commissionAmount : null,
             net_amount: isApproved ? netAmount : null,
             expires_at: providerResult.expiresAt ?? undefined,
-            bank_instructions: providerResult.bankInstructions ?? undefined,
+            bank_instructions: providerResult.bankInstructions
+              ? {
+                  bankName: providerResult.bankInstructions.bankName,
+                  accountNumber: providerResult.bankInstructions.accountNumber,
+                  accountHolder: providerResult.bankInstructions.accountHolder,
+                  amount: providerResult.bankInstructions.amount,
+                  currency: providerResult.bankInstructions.currency,
+                  reference: providerResult.bankInstructions.reference,
+                }
+              : undefined,
             qr_payload: providerResult.qrPayload ?? undefined,
             updated_at: new Date(),
           },
@@ -373,6 +407,12 @@ export class CreatePaymentUseCase {
         qrPayload: providerResult.qrPayload ?? null,
         createdAt: updatedPayment.created_at.toISOString(),
         updatedAt: updatedPayment.updated_at.toISOString(),
+        ...(finalStatus === 'pending'
+          ? {
+              qrPayload: providerResult.qrPayload,
+              expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+            }
+          : {}),
       };
 
       // 6. Guardar en caché de idempotencia por 24 horas

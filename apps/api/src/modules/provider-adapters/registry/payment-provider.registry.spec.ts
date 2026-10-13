@@ -6,31 +6,49 @@ import {
   MissingPaymentProviderBindingError,
   parsePaymentProviderBindings,
   UnsupportedPaymentMethodError,
+  UnsupportedPaymentProviderBindingError,
 } from './payment-provider.binding';
 import { PaymentProviderRegistry } from './payment-provider.registry';
 
-function fakeAdapter(name: string): PaymentProviderPort {
+function fakeAdapter(id: string, methods: string[]): PaymentProviderPort {
   return {
-    authorize: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),
-    capture: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),
-    queryStatus: async (): Promise<ProviderResult> => ({ outcome: 'approved', providerTransactionId: name }),
+    metadata: {
+      id,
+      displayName: id,
+      methods: methods.map((code) => ({
+        code,
+        label: code,
+        processingMode: 'synchronous',
+        requiresPaymentToken: code === 'card',
+        fees: { fixedAmount: '0.00', variableBps: 0, currency: 'USD' },
+      })),
+    },
+    authorize: async (): Promise<ProviderResult> => ({
+      outcome: 'approved',
+      providerTransactionId: id,
+    }),
+    capture: async (): Promise<ProviderResult> => ({
+      outcome: 'approved',
+      providerTransactionId: id,
+    }),
+    queryStatus: async (): Promise<ProviderResult> => ({
+      outcome: 'approved',
+      providerTransactionId: id,
+    }),
   };
 }
 
-const stripe = fakeAdapter('stripe');
-const azzurra = fakeAdapter('azzurra');
+const stripe = fakeAdapter('stripe', ['card']);
+const azzurra = fakeAdapter('azzurra', ['wallet', 'card']);
 
 describe('PaymentProviderRegistry', () => {
-  it('resuelve el adaptador del método de pago sin condiciones por proveedor', () => {
+  it('resolves methods from adapter metadata', () => {
     const registry = new PaymentProviderRegistry(
       [
         { adapterCode: 'stripe', adapter: stripe },
         { adapterCode: 'azzurra', adapter: azzurra },
       ],
-      [
-        { paymentMethod: 'card', adapterCode: 'stripe' },
-        { paymentMethod: 'wallet', adapterCode: 'azzurra' },
-      ],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
     );
 
     expect(registry.resolve('card')).toBe(stripe);
@@ -39,25 +57,58 @@ describe('PaymentProviderRegistry', () => {
     expect(registry.supportedAdapterCodes()).toEqual(['azzurra', 'stripe']);
   });
 
-  it('normaliza mayúsculas y espacios del método de pago', () => {
-    const registry = new PaymentProviderRegistry([{ adapterCode: 'stripe', adapter: stripe }], [
-      { paymentMethod: 'card', adapterCode: 'stripe' },
-    ]);
+  it('normalizes method codes for resolve, supports, and capabilityOf', () => {
+    const registry = new PaymentProviderRegistry(
+      [{ adapterCode: 'stripe', adapter: stripe }],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
+    );
 
-    expect(registry.resolve('CARD')).toBe(stripe);
-    expect(registry.resolve(' card ')).toBe(stripe);
+    expect(registry.resolve(' CARD ')).toBe(stripe);
+    expect(registry.supports('CARD')).toBe(true);
+    expect(registry.capabilityOf(' card ').code).toBe('card');
   });
 
-  it('lanza un error explícito cuando el método de pago no tiene adaptador', () => {
-    const registry = new PaymentProviderRegistry([{ adapterCode: 'stripe', adapter: stripe }], [
-      { paymentMethod: 'card', adapterCode: 'stripe' },
-    ]);
+  it('lists each enabled capability with its provider id', () => {
+    const registry = new PaymentProviderRegistry(
+      [
+        { adapterCode: 'stripe', adapter: stripe },
+        { adapterCode: 'azzurra', adapter: azzurra },
+      ],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
+    );
 
+    expect(registry.listMethods()).toEqual([
+      {
+        code: 'card',
+        label: 'card',
+        processingMode: 'synchronous',
+        requiresPaymentToken: true,
+        fees: { fixedAmount: '0.00', variableBps: 0, currency: 'USD' },
+        providerId: 'stripe',
+      },
+      {
+        code: 'wallet',
+        label: 'wallet',
+        processingMode: 'synchronous',
+        requiresPaymentToken: false,
+        fees: { fixedAmount: '0.00', variableBps: 0, currency: 'USD' },
+        providerId: 'azzurra',
+      },
+    ]);
+  });
+
+  it('throws UnsupportedPaymentMethodError for unknown methods', () => {
+    const registry = new PaymentProviderRegistry(
+      [{ adapterCode: 'stripe', adapter: stripe }],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
+    );
+
+    expect(registry.supports('qr')).toBe(false);
     expect(() => registry.resolve('qr')).toThrow(UnsupportedPaymentMethodError);
-    expect(() => registry.resolve('qr')).toThrow('No hay un adaptador de proveedor registrado');
+    expect(() => registry.capabilityOf('qr')).toThrow(UnsupportedPaymentMethodError);
   });
 
-  it('rechaza enlazar dos adaptadores al mismo método de pago', () => {
+  it('fails fast if adapters collide and no explicit binding selects one', () => {
     expect(
       () =>
         new PaymentProviderRegistry(
@@ -65,77 +116,107 @@ describe('PaymentProviderRegistry', () => {
             { adapterCode: 'stripe', adapter: stripe },
             { adapterCode: 'azzurra', adapter: azzurra },
           ],
-          [
-            { paymentMethod: 'card', adapterCode: 'stripe' },
-            { paymentMethod: 'CARD', adapterCode: 'azzurra' },
-          ],
+          [{ paymentMethod: 'wallet', adapterCode: 'azzurra' }],
         ),
     ).toThrow(DuplicatePaymentProviderBindingError);
   });
 
-  it('rechaza enlazar un adaptador que no está registrado', () => {
-    expect(
-      () =>
-        new PaymentProviderRegistry([{ adapterCode: 'stripe', adapter: stripe }], [
-          { paymentMethod: 'card', adapterCode: 'azzurra' },
-        ]),
-    ).toThrow(MissingPaymentProviderBindingError);
-  });
-
-  it('permite reconfigurar el mapeo por configuración sin cambiar el código', () => {
+  it('uses an explicit binding to resolve a metadata collision', () => {
     const registry = new PaymentProviderRegistry(
       [
         { adapterCode: 'stripe', adapter: stripe },
         { adapterCode: 'azzurra', adapter: azzurra },
       ],
-      DEFAULT_PAYMENT_PROVIDER_BINDINGS,
+      [{ paymentMethod: 'card', adapterCode: 'azzurra' }],
     );
-
-    expect(registry.resolve('card')).toBe(stripe);
-
-    registry.applyBindings([{ paymentMethod: 'card', adapterCode: 'azzurra' }]);
 
     expect(registry.resolve('card')).toBe(azzurra);
   });
 
-  it('replace=true descarta los bindings anteriores', () => {
+  it('rejects bindings to an adapter that is not registered', () => {
+    expect(
+      () =>
+        new PaymentProviderRegistry([{ adapterCode: 'stripe', adapter: stripe }], [
+          { paymentMethod: 'card', adapterCode: 'missing' },
+        ]),
+    ).toThrow(MissingPaymentProviderBindingError);
+  });
+
+  it('rejects a binding when the selected adapter does not declare that method', () => {
+    expect(
+      () =>
+        new PaymentProviderRegistry([{ adapterCode: 'stripe', adapter: stripe }], [
+          { paymentMethod: 'wallet', adapterCode: 'stripe' },
+        ]),
+    ).toThrow(UnsupportedPaymentProviderBindingError);
+  });
+
+  it('rejects adapter registration ids that disagree with metadata', () => {
+    expect(
+      () =>
+        new PaymentProviderRegistry(
+          [{ adapterCode: 'another-id', adapter: stripe }],
+          [{ paymentMethod: 'card', adapterCode: 'stripe' }],
+        ),
+    ).toThrow(InvalidPaymentProviderBindingsError);
+  });
+
+  it('allows explicit reconfiguration for methods supported by both adapters', () => {
     const registry = new PaymentProviderRegistry(
       [
         { adapterCode: 'stripe', adapter: stripe },
         { adapterCode: 'azzurra', adapter: azzurra },
       ],
-      [{ paymentMethod: 'wallet', adapterCode: 'azzurra' }],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
     );
 
-    registry.applyBindings([{ paymentMethod: 'card', adapterCode: 'stripe' }], true);
+    expect(registry.resolve('card')).toBe(stripe);
+    registry.applyBindings([{ paymentMethod: 'card', adapterCode: 'azzurra' }]);
+    expect(registry.resolve('card')).toBe(azzurra);
+  });
 
-    expect(registry.supportedPaymentMethods()).toEqual(['card']);
-    expect(() => registry.resolve('wallet')).toThrow(UnsupportedPaymentMethodError);
+  it('replace=true discards previously enabled methods', () => {
+    const registry = new PaymentProviderRegistry(
+      [
+        { adapterCode: 'stripe', adapter: stripe },
+        { adapterCode: 'azzurra', adapter: azzurra },
+      ],
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
+    );
+
+    registry.applyBindings([{ paymentMethod: 'wallet', adapterCode: 'azzurra' }], true);
+
+    expect(registry.supportedPaymentMethods()).toEqual(['wallet']);
+    expect(() => registry.resolve('card')).toThrow(UnsupportedPaymentMethodError);
   });
 });
 
 describe('DEFAULT_PAYMENT_PROVIDER_BINDINGS', () => {
-  it('enlaza el método card con stripe', () => {
-    expect(DEFAULT_PAYMENT_PROVIDER_BINDINGS).toEqual([{ paymentMethod: 'card', adapterCode: 'stripe' }]);
+  it('provides defaults for card, bank transfer, and QR', () => {
+    expect(DEFAULT_PAYMENT_PROVIDER_BINDINGS).toEqual([
+      { paymentMethod: 'card', adapterCode: 'stripe' },
+      { paymentMethod: 'bank_transfer', adapterCode: 'bank_transfer_local' },
+      { paymentMethod: 'qr', adapterCode: 'qr_local' },
+    ]);
   });
 });
 
 describe('parsePaymentProviderBindings', () => {
-  it('lee metodo=adaptador separados por comas', () => {
+  it('parses comma-separated method=adapter entries', () => {
     expect(parsePaymentProviderBindings('card=stripe,wallet=azzurra')).toEqual([
       { paymentMethod: 'card', adapterCode: 'stripe' },
       { paymentMethod: 'wallet', adapterCode: 'azzurra' },
     ]);
   });
 
-  it('tolera espacios', () => {
+  it('trims whitespace around bindings', () => {
     expect(parsePaymentProviderBindings(' card = stripe , wallet = azzurra ')).toEqual([
       { paymentMethod: 'card', adapterCode: 'stripe' },
       { paymentMethod: 'wallet', adapterCode: 'azzurra' },
     ]);
   });
 
-  it('rechaza bindings mal formados o vacíos', () => {
+  it('rejects malformed and empty bindings', () => {
     expect(() => parsePaymentProviderBindings('')).toThrow(InvalidPaymentProviderBindingsError);
     expect(() => parsePaymentProviderBindings('card')).toThrow('no tiene el formato metodo=adaptador');
     expect(() => parsePaymentProviderBindings('=stripe')).toThrow(InvalidPaymentProviderBindingsError);

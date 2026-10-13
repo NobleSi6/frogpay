@@ -17,12 +17,17 @@ describe('BankTransferLocalAdapter', () => {
   });
 
   it('debe exponer los metadatos correctos para el proveedor asíncrono', () => {
-    const metadata = adapter.getMetadata();
+    const metadata = adapter.metadata;
 
     expect(metadata.id).toBe('bank_transfer_local');
-    expect(metadata.name).toBe('Banco FrogPay Simulado');
-    expect(metadata.processingMode).toBe('asynchronous');
-    expect(metadata.requiresPaymentToken).toBe(false);
+    expect(metadata.displayName).toBe('Banco FrogPay Simulado');
+    expect(metadata.methods).toEqual([
+      expect.objectContaining({
+        code: 'bank_transfer',
+        processingMode: 'asynchronous',
+        requiresPaymentToken: false,
+      }),
+    ]);
   });
 
   it('debe retornar outcome pending con instrucciones y referencia generada', async () => {

@@ -5,15 +5,9 @@ import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
 import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
 import { StripeCredentialsService } from './application/stripe-credentials.service';
 import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
-import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
-import {
-  BankTransferLocalAdapter,
-  BANK_TRANSFER_ADAPTER_CODE,
-} from './adapters/bank-transfer/bank-transfer.adapter';
-import {
-  STRIPE_ADAPTER_CODE,
-  stripeClientProvider,
-} from './adapters/stripe/stripe-client.provider';
+import { BankTransferLocalAdapter } from './adapters/bank-transfer/bank-transfer.adapter';
+import type { PaymentProviderPort } from './ports/payment-provider.port';
+import { stripeClientProvider } from './adapters/stripe/stripe-client.provider';
 import {
   resolveStripeProviderConfig,
   STRIPE_PROVIDER_CONFIG,
@@ -22,8 +16,13 @@ import { PAYMENT_PROVIDER_PORT } from './ports/payment-provider.port';
 import {
   DEFAULT_PAYMENT_PROVIDER_BINDINGS,
   parsePaymentProviderBindings,
+  PaymentProviderRegistration,
 } from './registry/payment-provider.binding';
 import { PaymentProviderRegistry } from './registry/payment-provider.registry';
+import {
+  PAYMENT_PROVIDER_ADAPTERS,
+  PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+} from './provider-adapters.config';
 
 /**
  * Proveedores disponibles y credenciales de Stripe administradas por tenant.
@@ -36,6 +35,7 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
     AdapterEventProbe,
     StripeCredentialsService,
     CredentialsEncryptionService,
+    ...PAYMENT_PROVIDER_ADAPTERS,
     {
       provide: STRIPE_PROVIDER_CONFIG,
       inject: [ConfigService],
@@ -50,25 +50,28 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
         }),
     },
     stripeClientProvider,
-    StripePaymentProviderAdapter,
-    BankTransferLocalAdapter,
     {
       provide: PAYMENT_PROVIDER_PORT,
-      useExisting: StripePaymentProviderAdapter,
+      useExisting: PAYMENT_PROVIDER_ADAPTERS[0],
+    },
+    {
+      provide: PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+      inject: [...PAYMENT_PROVIDER_ADAPTERS],
+      useFactory: (...adapters: PaymentProviderPort[]): PaymentProviderRegistration[] =>
+        adapters.map((adapter) => ({
+          adapterCode: adapter.metadata.id,
+          adapter,
+        })),
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, StripePaymentProviderAdapter, BankTransferLocalAdapter],
+      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN],
       useFactory: (
         config: ConfigService,
-        stripeAdapter: StripePaymentProviderAdapter,
-        bankTransferAdapter: BankTransferLocalAdapter,
+        registrations: PaymentProviderRegistration[],
       ): PaymentProviderRegistry => {
         const registry = new PaymentProviderRegistry(
-          [
-            { adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter },
-            { adapterCode: BANK_TRANSFER_ADAPTER_CODE, adapter: bankTransferAdapter },
-          ],
+          registrations,
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();

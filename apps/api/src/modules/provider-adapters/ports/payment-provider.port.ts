@@ -83,7 +83,7 @@ export interface ProviderResult {
 }
 
 export interface PaymentProviderPort {
-  readonly metadata?: ProviderMetadata;
+  readonly metadata: ProviderMetadata;
   authorize(input: AuthorizeInput): Promise<ProviderResult>;
   capture(input: CaptureInput): Promise<ProviderResult>;
   queryStatus(input: QueryStatusInput): Promise<ProviderResult>;

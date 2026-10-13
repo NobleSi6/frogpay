@@ -1,6 +1,7 @@
 import { ConfigModule } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaModule } from '../../shared/database/prisma.module';
+import { MockPaymentProviderAdapter } from './adapters/mock/mock-payment-provider.adapter';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import { PAYMENT_PROVIDER_PORT } from './ports/payment-provider.port';
 import { ProviderAdaptersModule } from './provider-adapters.module';
@@ -36,5 +37,27 @@ describe('ProviderAdaptersModule', () => {
     expect(moduleRef.get(PAYMENT_PROVIDER_PORT, { strict: false })).toBe(
       moduleRef.get(StripePaymentProviderAdapter, { strict: false }),
     );
+  });
+
+  it('declares Stripe method and processing metadata on the adapter', () => {
+    expect(moduleRef.get(StripePaymentProviderAdapter, { strict: false }).metadata).toEqual({
+      id: 'stripe',
+      displayName: 'Stripe',
+      methods: [
+        {
+          code: 'card',
+          label: 'Tarjeta',
+          processingMode: 'synchronous',
+          requiresPaymentToken: true,
+          fees: { fixedAmount: '0.30', variableBps: 290, currency: 'USD' },
+        },
+      ],
+    });
+  });
+
+  it('does not register the mock adapter when its enable flag is off', () => {
+    expect(() =>
+      moduleRef.get(MockPaymentProviderAdapter, { strict: false }),
+    ).toThrow();
   });
 });

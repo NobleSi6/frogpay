@@ -348,4 +348,3 @@ model bank_transaction {
   @@index([payment_id], map: "idx_bt_payment")
   @@index([external_id], map: "idx_bt_external_id")
 }
-

@@ -8,6 +8,8 @@ import { CreatePaymentUseCase } from './application/use-cases/create-payment.use
 import { GetPaymentUseCase } from './application/use-cases/get-payment.use-case';
 import { BankReconciliationService } from './application/services/bank-reconciliation.service';
 import { BankTransferExpirationService } from './application/services/bank-transfer-expiration.service';
+import { PaymentSettlementService } from './application/use-cases/payment-settlement.service';
+import { PaymentQrExpirationJob } from './application/use-cases/payment-qr-expiration.job';
 import { ApiKeyAuthGuard } from './presentation/guards/api-key-auth.guard';
 import { PaymentsController } from './presentation/http/payments.controller';
 import { DashboardPaymentsController } from './presentation/http/dashboard-payments.controller';
@@ -29,6 +31,8 @@ import { DashboardBankTransactionsController } from './presentation/http/dashboa
     GetPaymentUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
+    PaymentSettlementService,
+    PaymentQrExpirationJob,
     ApiKeyAuthGuard,
   ],
   exports: [
@@ -38,6 +42,7 @@ import { DashboardBankTransactionsController } from './presentation/http/dashboa
     GetPaymentUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
+    PaymentSettlementService,
   ],
 })
 export class PaymentsModule {}

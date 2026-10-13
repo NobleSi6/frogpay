@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsIn,
   IsNotEmpty,
@@ -32,15 +33,14 @@ export class CreatePaymentDto {
   currency!: string;
 
   @ApiProperty({
-    description: 'Método de pago (card, bank_transfer, qr).',
-    example: 'bank_transfer',
-    enum: ['card', 'bank_transfer', 'qr'],
+    description: 'Código del método de pago soportado por un adapter habilitado.',
+    example: 'card',
   })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   @IsString({ message: 'paymentMethod debe ser una cadena.' })
   @IsNotEmpty({ message: 'paymentMethod es obligatorio.' })
-  @IsIn(['card', 'bank_transfer', 'qr'], {
-    message: 'paymentMethod no es válido o no está soportado.',
-  })
   paymentMethod!: string;
 
   @ApiProperty({
@@ -60,7 +60,7 @@ export class CreatePaymentDto {
     example: 'pm_1Nk000000000000000000000',
     required: false,
   })
-  @ValidateIf((o: CreatePaymentDto) => o.paymentMethod === 'card')
+  @ValidateIf((o: CreatePaymentDto) => o.paymentToken !== undefined)
   @IsString({ message: 'paymentToken debe ser una cadena.' })
   @IsNotEmpty({ message: 'paymentToken es obligatorio para el método "card".' })
   @Matches(/^pm_[a-zA-Z0-9_]+$/, {
