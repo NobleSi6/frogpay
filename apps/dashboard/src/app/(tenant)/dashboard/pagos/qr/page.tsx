@@ -32,10 +32,14 @@ export default function QrPaymentPage() {
         currency: "BOB",
         idempotencyKey: crypto.randomUUID(),
       });
+      if (!response.qrPayload || !response.expiresAt) {
+        throw new Error("El proveedor no devolvió el código QR o su fecha de expiración.");
+      }
+
       setPayment({
         ...response,
-        qrPayload: response.qrPayload ?? `FROGPAY-SANDBOX|${response.id}|${response.currency}|${response.amount}`,
-        expiresAt: response.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        qrPayload: response.qrPayload,
+        expiresAt: response.expiresAt,
       });
     } catch (error) {
       setRequestError(error);

@@ -88,6 +88,82 @@ test("QR payments can be created, viewed and simulated in demo mode without the 
   const approved = await payments.paymentsService.getPaymentById(created.id);
   assert.equal(approved.status, "APPROVED");
   assert.equal(approved.timeline.at(-1).status, "approved");
+
+  const rejectedPayment = await payments.paymentsService.createQrPayment({
+    amount: 19,
+    currency: "BOB",
+    idempotencyKey: "qr-rejected-attempt",
+  });
+  await payments.paymentsService.simulateQrPayment(rejectedPayment.id, "REJECTED");
+  const rejected = await payments.paymentsService.getPaymentById(rejectedPayment.id);
+  assert.equal(rejected.status, "REJECTED");
+  assert.equal(rejected.timeline.at(-1).status, "rejected");
+});
+
+test("QR simulation does not call a nonexistent API endpoint outside demo mode", async () => {
+  const payments = load("features/payments/services/payments.service.ts", {
+    "@/lib/api-client": {
+      apiRequest: async () => {
+        throw new Error("The QR simulation endpoint must not be called.");
+      },
+    },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: false },
+    "./bank-transfer.service": { getMockBankTransfer: () => undefined },
+  });
+
+  await assert.rejects(
+    payments.paymentsService.simulateQrPayment("payment-id", "APPROVED"),
+    /simulación remota de pagos QR no está disponible/,
+  );
+});
+
+test("QR payments use the authenticated dashboard endpoint with the QR method", async () => {
+  const requests = [];
+  const qrResponse = {
+    id: "pay_qr_123",
+    status: "pending",
+    amount: "42.50",
+    currency: "BOB",
+    paymentMethod: "qr",
+    environment: "sandbox",
+    merchantReference: "DASH-QR-qr-attempt-uuid",
+    commissionAmount: "0.00",
+    netAmount: "42.50",
+    providerTransactionId: null,
+    errorCode: null,
+    createdAt: "2026-10-06T00:00:00.000Z",
+    updatedAt: "2026-10-06T00:00:00.000Z",
+    qrPayload: "0002010102126304A1B2",
+    expiresAt: "2026-10-06T00:15:00.000Z",
+  };
+  const payments = load("features/payments/services/payments.service.ts", {
+    "@/lib/api-client": {
+      apiRequest: async (path, options) => {
+        requests.push({ path, options });
+        return qrResponse;
+      },
+    },
+    "@/lib/demo-mode": { SPRINT1_DEMO_MODE: false },
+    "./bank-transfer.service": { getMockBankTransfer: () => undefined },
+  });
+
+  const created = await payments.paymentsService.createQrPayment({
+    amount: 42.5,
+    currency: "BOB",
+    idempotencyKey: "qr-attempt-uuid",
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].path, "/dashboard/payments/test");
+  assert.equal(requests[0].options.headers["Idempotency-Key"], "qr-attempt-uuid");
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    amount: "42.50",
+    currency: "BOB",
+    paymentMethod: "qr",
+    merchantReference: "DASH-QR-qr-attempt-uuid",
+  });
+  assert.equal(created.qrPayload, qrResponse.qrPayload);
+  assert.equal(created.expiresAt, qrResponse.expiresAt);
 });
 
 test("bank transfers run entirely in the sandbox mock without calling the API", async () => {

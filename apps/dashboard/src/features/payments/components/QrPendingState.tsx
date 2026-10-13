@@ -11,7 +11,7 @@ interface QrPendingStateProps {
   expiresAt: string;
   amount: number;
   currency: string;
-  onSimulate: (result: "APPROVED" | "FAILED") => void;
+  onSimulate: (result: "APPROVED" | "REJECTED") => void;
   onExpire: () => void;
   isSimulating?: boolean;
 }
@@ -72,25 +72,27 @@ export function QrPendingState({
         Pendiente
       </Badge>
 
-      {SPRINT1_DEMO_MODE && (
-        <div className="w-full mt-6 p-4 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 space-y-3">
-          <p className="text-xs text-slate-500 font-medium">Simulador (solo sandbox)</p>
-          <Button
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-            onClick={() => onSimulate("APPROVED")}
-            disabled={isSimulating}
-          >
-            {isSimulating ? "Procesando..." : "Simular pago aprobado"}
-          </Button>
-          <Button
-            className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium"
-            onClick={() => onSimulate("FAILED")}
-            disabled={isSimulating}
-          >
-            {isSimulating ? "Procesando..." : "Simular pago fallido"}
-          </Button>
+      <div className="w-full mt-6 p-4 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 space-y-3">
+        <div>
+          <p className="text-xs text-slate-500 font-medium">
+            {SPRINT1_DEMO_MODE ? "Simulador (solo sandbox)" : "Vista previa del flujo"}
+          </p>
         </div>
-      )}
+        <Button
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+          onClick={() => onSimulate("APPROVED")}
+          disabled={isSimulating}
+        >
+          {isSimulating ? "Procesando..." : "Simular pago aprobado"}
+        </Button>
+        <Button
+          className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium"
+          onClick={() => onSimulate("REJECTED")}
+          disabled={isSimulating}
+        >
+          {isSimulating ? "Procesando..." : "Simular pago rechazado"}
+        </Button>
+      </div>
     </div>
   );
 }

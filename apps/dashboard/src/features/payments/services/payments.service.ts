@@ -36,8 +36,8 @@ export interface PaymentResponse {
 }
 
 export interface QrPaymentResponse extends PaymentResponse {
-  qrPayload?: string;
-  expiresAt?: string;
+  qrPayload?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface PaymentDetail {
@@ -158,13 +158,13 @@ export const paymentsService = {
       };
     }
 
-    return apiRequest<QrPaymentResponse>('/v1/payments', {
+    return apiRequest<QrPaymentResponse>('/dashboard/payments/test', {
       method: 'POST',
       headers: { 'Idempotency-Key': data.idempotencyKey },
       body: JSON.stringify({
         amount: data.amount.toFixed(2),
         currency: data.currency,
-        method: 'qr',
+        paymentMethod: 'qr',
         merchantReference: `DASH-QR-${data.idempotencyKey}`,
       }),
     });
@@ -173,25 +173,20 @@ export const paymentsService = {
   // Simulación de Pago QR en Sandbox (TSK-DEV1-302)
   simulateQrPayment: async (
     paymentId: string,
-    result: 'APPROVED' | 'FAILED',
+    result: 'APPROVED' | 'REJECTED',
   ): Promise<void> => {
-    if (SPRINT1_DEMO_MODE) {
-      const payment = requireMockQrPayment(paymentId);
-      const status = result === 'APPROVED' ? 'APPROVED' : 'FAILED';
-      mockQrPayments.set(paymentId, {
-        ...payment,
-        status,
-        timeline: [
-          ...payment.timeline.map((event) => ({ ...event, isCurrent: false })),
-          { status: status.toLowerCase(), timestamp: new Date().toLocaleTimeString('es-BO'), isCurrent: true },
-        ],
-      });
-      return;
+    if (!SPRINT1_DEMO_MODE) {
+      throw new Error('La simulación remota de pagos QR no está disponible en el backend.');
     }
 
-    return apiRequest<void>(`/dashboard/payments/${encodeURIComponent(paymentId)}/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ result }),
+    const payment = requireMockQrPayment(paymentId);
+    mockQrPayments.set(paymentId, {
+      ...payment,
+      status: result,
+      timeline: [
+        ...payment.timeline.map((event) => ({ ...event, isCurrent: false })),
+        { status: result.toLowerCase(), timestamp: new Date().toLocaleTimeString('es-BO'), isCurrent: true },
+      ],
     });
   },
 
