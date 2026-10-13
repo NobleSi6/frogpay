@@ -10,6 +10,7 @@ describe('ERROR_CATALOG', () => {
         'idempotency_key_reused',
         'incorrect_cvc',
         'insufficient_funds',
+        'invalid_state_transition',
         'plan_limit_exceeded',
         'processing_error',
         'provider_timeout',
@@ -33,5 +34,14 @@ describe('ERROR_CATALOG', () => {
     expect(ERROR_CATALOG.provider_timeout).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.provider_unavailable).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.qr_expired).not.toHaveProperty('httpStatus');
+  });
+
+  it('incluye los códigos del Sprint 3: qr_expired e invalid_state_transition (TSK-DEV2-305)', () => {
+    expect(ERROR_CATALOG.qr_expired).toEqual({ code: 'qr_expired', message: expect.any(String) });
+    expect(ERROR_CATALOG.invalid_state_transition).toEqual({
+      code: 'invalid_state_transition',
+      httpStatus: 409,
+      message: expect.any(String),
+    });
   });
 });

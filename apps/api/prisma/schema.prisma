@@ -244,6 +244,7 @@ model tenant {
   tenant_plan_usage          tenant_plan_usage[]
   tenant_provider_credential tenant_provider_credential[]
   webhook                    webhook[]
+  webhook_delivery_attempt   webhook_delivery_attempt[]
 
   @@index([plan_id], map: "idx_tenant_plan")
 }
@@ -288,7 +289,10 @@ model webhook {
   secret_encrypted String
   event_types      Json               @default("[]")
   is_active        Boolean            @default(true)
+  environment      String             @default("sandbox")
   created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  deleted_at       DateTime?          @db.Timestamptz(6)
   tenant           tenant             @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   webhook_delivery webhook_delivery[]
 
@@ -303,6 +307,7 @@ model webhook_delivery {
   webhook_id    String    @db.Uuid
   tenant_id     String    @db.Uuid
   payment_id    String?   @db.Uuid
+  event_id      String?   @db.Uuid
   event_type    String
   payload       Json
   status        String    @default("pending")
@@ -315,8 +320,28 @@ model webhook_delivery {
   updated_at    DateTime  @default(now()) @db.Timestamptz(6)
   payment       payment?  @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
   webhook       webhook   @relation(fields: [webhook_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  attempts      webhook_delivery_attempt[]
 
   @@index([payment_id], map: "idx_wd_payment")
   @@index([tenant_id], map: "idx_wd_tenant")
   @@index([webhook_id, status], map: "idx_wd_webhook_status")
+}
+
+/// Historial append-only de cada intento de entrega de un webhook (TSK-DEV2-302).
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_delivery_attempt {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  delivery_id    String           @db.Uuid
+  tenant_id      String           @db.Uuid
+  attempt_number Int
+  response_code  Int?
+  error          String?
+  duration_ms    Int              @default(0)
+  succeeded      Boolean
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  delivery       webhook_delivery @relation(fields: [delivery_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant         tenant           @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([delivery_id, attempt_number])
+  @@index([tenant_id], map: "idx_wda_tenant")
 }

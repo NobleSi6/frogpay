@@ -66,20 +66,18 @@ import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN],
+      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN, CircuitBreakerRegistry],
       useFactory: (
         config: ConfigService,
         registrations: PaymentProviderRegistration[],
-      inject: [ConfigService, StripePaymentProviderAdapter, CircuitBreakerRegistry],
-      useFactory: (
-        config: ConfigService,
-        stripeAdapter: StripePaymentProviderAdapter,
         breakers: CircuitBreakerRegistry,
       ): PaymentProviderRegistry => {
         // Cada adaptador se registra envuelto en su propio circuito (TSK-DEV2-304).
         const registry = new PaymentProviderRegistry(
-          registrations,
-          [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: breakers.protect(STRIPE_ADAPTER_CODE, stripeAdapter) }],
+          registrations.map((registration) => ({
+            adapterCode: registration.adapterCode,
+            adapter: breakers.protect(registration.adapterCode, registration.adapter),
+          })),
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();

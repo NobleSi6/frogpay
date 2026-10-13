@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { WebhookEnvelope } from '../../domain/webhook-envelope';
 
@@ -24,76 +25,66 @@ const endpointSelect = {
   id: true,
   url: true,
   event_types: true,
+  environment: true,
   is_active: true,
   created_at: true,
   updated_at: true,
 } as const;
 
-type EndpointRow = {
-  id: string;
-  url: string;
-  event_types: unknown;
-  is_active: boolean;
-  created_at: Date;
-  updated_at?: Date | null;
-  environment?: 'sandbox' | 'production';
-};
+type EndpointRow = Prisma.webhookGetPayload<{ select: typeof endpointSelect }>;
 
 function toRecord(row: EndpointRow): WebhookEndpointRecord {
   return {
     id: row.id,
     url: row.url,
     eventTypes: Array.isArray(row.event_types) ? (row.event_types as string[]) : [],
-    environment: row.environment ?? 'sandbox',
+    environment: row.environment === 'production' ? 'production' : 'sandbox',
     isActive: row.is_active,
     createdAt: row.created_at,
-    updatedAt: row.updated_at ?? row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
+/** Endpoints y entregas del tenant de la sesión. Toda consulta va con withTenant (RLS). */
 @Injectable()
 export class WebhookEndpointRepository {
   constructor(private readonly db: PrismaTenantContextService) {}
 
-  create(
-    tenantId: string,
-    input: { url: string; eventTypes: string[]; environment: string; secretEncrypted: string },
-  ) {
+  create(tenantId: string, input: { url: string; eventTypes: string[]; environment: string; secretEncrypted: string }) {
     return this.db.withTenant(tenantId, async (tx) =>
-      toRecord({
-        ...(await tx.webhook.create({
+      toRecord(
+        await tx.webhook.create({
           data: {
             tenant_id: tenantId,
             url: input.url,
             event_types: input.eventTypes,
+            environment: input.environment,
             secret_encrypted: input.secretEncrypted,
-            is_active: true,
           },
           select: endpointSelect,
-        })),
-        environment: input.environment as 'sandbox' | 'production',
-      }),
+        }),
+      ),
     );
   }
 
   list(tenantId: string): Promise<WebhookEndpointRecord[]> {
     return this.db.withTenant(tenantId, async (tx) => {
       const rows = await tx.webhook.findMany({
-        where: { tenant_id: tenantId },
+        where: { tenant_id: tenantId, deleted_at: null },
         orderBy: { created_at: 'desc' },
         select: endpointSelect,
       });
-      return rows.map((row: EndpointRow) => toRecord({ ...row, environment: 'sandbox' }));
+      return rows.map(toRecord);
     });
   }
 
   findById(tenantId: string, id: string): Promise<WebhookEndpointRecord | null> {
     return this.db.withTenant(tenantId, async (tx) => {
       const row = await tx.webhook.findFirst({
-        where: { id, tenant_id: tenantId },
+        where: { id, tenant_id: tenantId, deleted_at: null },
         select: endpointSelect,
       });
-      return row ? toRecord({ ...row, environment: 'sandbox' }) : null;
+      return row ? toRecord(row) : null;
     });
   }
 
@@ -103,32 +94,33 @@ export class WebhookEndpointRepository {
     changes: { url?: string; eventTypes?: string[]; isActive?: boolean; secretEncrypted?: string; deleted?: boolean },
   ): Promise<WebhookEndpointRecord | null> {
     return this.db.withTenant(tenantId, async (tx) => {
-      const data: Record<string, unknown> = {
-        updated_at: new Date(),
-        ...(changes.url !== undefined && { url: changes.url }),
-        ...(changes.eventTypes !== undefined && { event_types: changes.eventTypes }),
-        ...(changes.isActive !== undefined && { is_active: changes.deleted ? false : changes.isActive }),
-        ...(changes.secretEncrypted !== undefined && { secret_encrypted: changes.secretEncrypted }),
-      };
-
       const result = await tx.webhook.updateMany({
-        where: { id, tenant_id: tenantId },
-        data,
+        where: { id, tenant_id: tenantId, deleted_at: null },
+        data: {
+          url: changes.url,
+          event_types: changes.eventTypes,
+          is_active: changes.deleted ? false : changes.isActive,
+          secret_encrypted: changes.secretEncrypted,
+          deleted_at: changes.deleted ? new Date() : undefined,
+          updated_at: new Date(),
+        },
       });
       if (result.count === 0) return null;
       const row = await tx.webhook.findFirst({ where: { id, tenant_id: tenantId }, select: endpointSelect });
-      return row ? toRecord({ ...row, environment: 'sandbox' }) : null;
+      return row ? toRecord(row) : null;
     });
   }
 
+  /** Entrega de prueba: no está ligada a un pago y se identifica con un eventId propio. */
   createTestDelivery(tenantId: string, webhookId: string, envelope: WebhookEnvelope): Promise<string> {
     return this.db.withTenant(tenantId, async (tx) => {
       const row = await tx.webhook_delivery.create({
         data: {
           webhook_id: webhookId,
           tenant_id: tenantId,
+          event_id: envelope.eventId,
           event_type: envelope.eventName,
-          payload: envelope as unknown as Record<string, unknown>,
+          payload: envelope as unknown as Prisma.InputJsonObject,
           status: 'pending',
           next_retry_at: new Date(),
         },
@@ -139,13 +131,12 @@ export class WebhookEndpointRepository {
   }
 
   listDeliveries(tenantId: string, filters: DeliveryListFilters) {
-    const where: Record<string, unknown> = {
+    const where: Prisma.webhook_deliveryWhereInput = {
       tenant_id: tenantId,
-      ...(filters.status ? { status: filters.status } : {}),
-      ...(filters.paymentId ? { payment_id: filters.paymentId } : {}),
-      ...(filters.webhookId ? { webhook_id: filters.webhookId } : {}),
+      status: filters.status,
+      payment_id: filters.paymentId,
+      webhook_id: filters.webhookId,
     };
-
     return this.db.withTenant(tenantId, async (tx) => {
       const [rows, total] = await Promise.all([
         tx.webhook_delivery.findMany({
@@ -161,13 +152,15 @@ export class WebhookEndpointRepository {
   }
 
   findDelivery(tenantId: string, deliveryId: string) {
-    return this.db.withTenant(tenantId, async (tx) =>
+    return this.db.withTenant(tenantId, (tx) =>
       tx.webhook_delivery.findFirst({
         where: { id: deliveryId, tenant_id: tenantId },
+        include: { attempts: { orderBy: { attempt_number: 'asc' } } },
       }),
     );
   }
 
+  /** Pasa una entrega fallida a pendiente para un reenvío manual; devuelve el intento a ejecutar. */
   markForManualRetry(tenantId: string, deliveryId: string, leaseMs: number): Promise<number | null> {
     return this.db.withTenant(tenantId, async (tx) => {
       const current = await tx.webhook_delivery.findFirst({
@@ -175,7 +168,6 @@ export class WebhookEndpointRepository {
         select: { attempt_count: true, status: true },
       });
       if (!current || !['failed', 'dead_letter'].includes(current.status)) return null;
-
       const result = await tx.webhook_delivery.updateMany({
         where: { id: deliveryId, tenant_id: tenantId, status: current.status, attempt_count: current.attempt_count },
         data: { status: 'pending', next_retry_at: new Date(Date.now() + leaseMs), updated_at: new Date() },

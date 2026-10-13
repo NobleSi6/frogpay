@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentProviderPort } from '../ports/payment-provider.port';
 import {
@@ -8,6 +8,7 @@ import {
   DEFAULT_CIRCUIT_BREAKER_OPTIONS,
 } from './circuit-breaker';
 import { CircuitBreakerPaymentProvider } from './circuit-breaker-payment-provider';
+import { ProviderFaultInjector } from './provider-fault-injector';
 
 /**
  * Un circuito independiente por proveedor (Stripe, QR, transferencia...).
@@ -19,7 +20,10 @@ export class CircuitBreakerRegistry {
   private readonly breakers = new Map<string, CircuitBreaker>();
   private readonly options: CircuitBreakerOptions;
 
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Optional() private readonly faults?: ProviderFaultInjector,
+  ) {
     this.options = {
       failureRateThreshold: readNumber(config, 'CIRCUIT_BREAKER_FAILURE_RATE', DEFAULT_CIRCUIT_BREAKER_OPTIONS.failureRateThreshold),
       windowMs: readNumber(config, 'CIRCUIT_BREAKER_WINDOW_MS', DEFAULT_CIRCUIT_BREAKER_OPTIONS.windowMs),
@@ -30,7 +34,7 @@ export class CircuitBreakerRegistry {
 
   /** Envuelve un adaptador con su circuito. Úsalo al registrar cada adaptador en el ProviderRegistry. */
   protect(providerCode: string, adapter: PaymentProviderPort): PaymentProviderPort {
-    return new CircuitBreakerPaymentProvider(adapter, this.get(providerCode));
+    return new CircuitBreakerPaymentProvider(adapter, this.get(providerCode), this.faults);
   }
 
   get(providerCode: string): CircuitBreaker {

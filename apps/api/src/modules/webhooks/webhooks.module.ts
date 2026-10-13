@@ -8,6 +8,7 @@ import { WEBHOOK_SECRET_CIPHER } from './application/ports/webhook-secret-cipher
 import { DeliverWebhookUseCase } from './application/use-cases/deliver-webhook.use-case';
 import { WebhookDeliveriesService } from './application/use-cases/webhook-deliveries.service';
 import { WebhookEndpointsService } from './application/use-cases/webhook-endpoints.service';
+import { WebhookDeliveryWorker } from './application/workers/webhook-delivery.worker';
 import { WebhookHttpClient } from './infrastructure/http/webhook-http.client';
 import { WebhookDispatchQueue } from './infrastructure/messaging/webhook-dispatch.queue';
 import { WebhookDeliveryRepository } from './infrastructure/persistence/webhook-delivery.repository';
@@ -25,6 +26,7 @@ import { WebhookEndpointsController } from './presentation/http/webhook-endpoint
     WebhookDispatchQueue,
     DeliverWebhookUseCase,
     PaymentEventsWebhookHandler,
+    WebhookDeliveryWorker,
     WebhookEndpointsService,
     WebhookDeliveriesService,
     {

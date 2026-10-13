@@ -1,79 +1,88 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform, Type } from 'class-transformer';
+import { Type } from 'class-transformer';
 import {
-  ArrayNotEmpty,
+  ArrayMinSize,
+  ArrayUnique,
   IsArray,
-  IsEnum,
+  IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   IsUrl,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
+import { WEBHOOK_SUBSCRIBABLE_EVENTS } from '../../domain/webhook-envelope';
 
-export const WEBHOOK_EVENTS = ['pago.creado', 'pago.aprobado', 'pago.rechazado', 'webhook.prueba'] as const;
+const EVENTS = [...WEBHOOK_SUBSCRIBABLE_EVENTS];
 
 export class CreateWebhookEndpointDto {
   @ApiProperty({ example: 'https://mi-tienda.com/webhooks/frogpay' })
+  @IsString()
+  @MaxLength(2048)
   @IsUrl({ require_tld: false, protocols: ['https', 'http'] })
-  url: string;
+  url!: string;
 
-  @ApiProperty({ type: [String], example: ['pago.aprobado', 'pago.rechazado'] })
+  @ApiProperty({ enum: EVENTS, isArray: true, example: ['pago.aprobado', 'pago.rechazado'] })
   @IsArray()
-  @ArrayNotEmpty()
-  @IsString({ each: true })
-  @IsIn(WEBHOOK_EVENTS as unknown as string[], { each: true })
-  eventTypes: string[];
+  @ArrayMinSize(1, { message: 'Selecciona al menos un evento.' })
+  @ArrayUnique()
+  @IsIn(EVENTS, { each: true, message: `Eventos permitidos: ${EVENTS.join(', ')}.` })
+  eventTypes!: string[];
 
   @ApiPropertyOptional({ enum: ['sandbox', 'production'], default: 'sandbox' })
   @IsOptional()
-  @IsEnum(['sandbox', 'production'])
+  @IsIn(['sandbox', 'production'])
   environment?: 'sandbox' | 'production';
 }
 
 export class UpdateWebhookEndpointDto {
   @ApiPropertyOptional({ example: 'https://mi-tienda.com/webhooks/frogpay' })
   @IsOptional()
+  @IsString()
+  @MaxLength(2048)
   @IsUrl({ require_tld: false, protocols: ['https', 'http'] })
   url?: string;
 
-  @ApiPropertyOptional({ type: [String], example: ['pago.aprobado'] })
+  @ApiPropertyOptional({ enum: EVENTS, isArray: true })
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  @IsIn(WEBHOOK_EVENTS as unknown as string[], { each: true })
+  @ArrayMinSize(1, { message: 'Selecciona al menos un evento.' })
+  @ArrayUnique()
+  @IsIn(EVENTS, { each: true, message: `Eventos permitidos: ${EVENTS.join(', ')}.` })
   eventTypes?: string[];
 
-  @ApiPropertyOptional({ example: true })
+  @ApiPropertyOptional({ example: true, description: 'Activar o desactivar el endpoint' })
   @IsOptional()
+  @IsBoolean()
   isActive?: boolean;
-
-  @ApiPropertyOptional({ enum: ['sandbox', 'production'] })
-  @IsOptional()
-  @IsEnum(['sandbox', 'production'])
-  environment?: 'sandbox' | 'production';
 }
 
 export class WebhookEndpointResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
-  @ApiProperty({ format: 'uuid' }) tenantId: string;
   @ApiProperty() url: string;
-  @ApiProperty({ type: [String] }) eventTypes: string[];
+  @ApiProperty({ enum: EVENTS, isArray: true }) eventTypes: string[];
   @ApiProperty() isActive: boolean;
   @ApiProperty({ enum: ['sandbox', 'production'] }) environment: 'sandbox' | 'production';
-  @ApiProperty() createdAt: Date;
+  @ApiProperty() createdAt: string;
+  @ApiProperty() updatedAt: string;
 }
 
 export class WebhookEndpointWithSecretResponseDto extends WebhookEndpointResponseDto {
-  @ApiProperty() secret: string;
+  @ApiProperty({
+    example: 'whsec_...',
+    description: 'Secreto de firma. Solo se devuelve en esta respuesta: guárdalo ahora, no se vuelve a mostrar.',
+  })
+  secret: string;
 }
 
 export class TestEventResponseDto {
-  @ApiProperty({ example: true }) accepted: boolean;
-  @ApiProperty({ example: 'queued' }) status: 'queued' | 'sent';
-  @ApiPropertyOptional({ format: 'uuid' }) deliveryId?: string;
+  @ApiProperty() deliveryId!: string;
+  @ApiProperty({ example: 'webhook.prueba' }) eventType!: string;
+  @ApiProperty({ example: 'pending' }) status!: string;
 }
 
 export class WebhookDeliveryResponseDto {
@@ -82,18 +91,27 @@ export class WebhookDeliveryResponseDto {
   @ApiProperty({ format: 'uuid', nullable: true }) paymentId: string | null;
   @ApiProperty({ format: 'uuid', nullable: true }) eventId: string | null;
   @ApiProperty() eventType: string;
-  @ApiProperty() status: string;
+  @ApiProperty({ enum: ['pending', 'delivered', 'failed'] }) status: string;
+  @ApiProperty() attemptCount: number;
   @ApiProperty({ nullable: true }) responseCode: number | null;
   @ApiProperty({ nullable: true }) lastError: string | null;
-  @ApiProperty({ nullable: true }) nextRetryAt: Date | null;
-  @ApiProperty({ nullable: true }) deliveredAt: Date | null;
-  @ApiProperty() createdAt: Date;
-  @ApiProperty() attemptCount: number;
+  @ApiProperty({ nullable: true }) nextRetryAt: string | null;
+  @ApiProperty({ nullable: true }) deliveredAt: string | null;
+  @ApiProperty() createdAt: string;
+}
+
+export class WebhookDeliveryAttemptDto {
+  @ApiProperty() attemptNumber!: number;
+  @ApiProperty({ nullable: true }) responseCode!: number | null;
+  @ApiProperty({ nullable: true }) error!: string | null;
+  @ApiProperty() durationMs!: number;
+  @ApiProperty() succeeded!: boolean;
+  @ApiProperty() createdAt!: string;
 }
 
 export class WebhookDeliveryDetailResponseDto extends WebhookDeliveryResponseDto {
   @ApiProperty({ type: 'object', additionalProperties: true }) payload: Record<string, unknown>;
-  @ApiProperty({ type: [Object] }) attempts: Array<Record<string, unknown>>;
+  @ApiProperty({ type: [WebhookDeliveryAttemptDto] }) attempts: WebhookDeliveryAttemptDto[];
 }
 
 export class PaginatedWebhookDeliveriesDto {
@@ -106,24 +124,31 @@ export class PaginatedWebhookDeliveriesDto {
 export class ListDeliveriesQueryDto {
   @ApiPropertyOptional({ enum: ['pending', 'failed', 'delivered'] })
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsIn(['pending', 'delivered', 'failed'])
+  status?: 'pending' | 'delivered' | 'failed';
 
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID()
   paymentId?: string;
 
-  @ApiPropertyOptional({ example: 1 })
+  @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Number)
-  @Min(1)
-  page?: number;
+  @IsUUID()
+  webhookId?: string;
 
-  @ApiPropertyOptional({ example: 20 })
+  @ApiPropertyOptional({ default: 1 })
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @ApiPropertyOptional({ default: 20, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
   @Min(1)
   @Max(100)
-  pageSize?: number;
+  pageSize = 20;
 }

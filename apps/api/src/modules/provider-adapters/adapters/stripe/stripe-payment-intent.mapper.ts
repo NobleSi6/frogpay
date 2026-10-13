@@ -19,6 +19,7 @@ export const AdapterErrorCode = {
   PROVIDER_TIMEOUT: ERROR_CATALOG.provider_timeout.code,
   PROVIDER_UNAVAILABLE: ERROR_CATALOG.provider_unavailable.code,
   QR_EXPIRED: ERROR_CATALOG.qr_expired.code,
+  INVALID_STATE_TRANSITION: ERROR_CATALOG.invalid_state_transition.code,
 } as const;
 
 /**

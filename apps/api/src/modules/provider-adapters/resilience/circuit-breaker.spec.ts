@@ -1,6 +1,7 @@
 import { CircuitBreaker } from './circuit-breaker';
 import { CircuitBreakerPaymentProvider } from './circuit-breaker-payment-provider';
 
+const META = { id: 'stripe', displayName: 'Stripe', methods: [] };
 const options = { failureRateThreshold: 0.5, windowMs: 60_000, minimumRequests: 5, openDurationMs: 30_000 };
 
 function clock(start = 1_000_000) {
@@ -76,6 +77,7 @@ describe('CircuitBreakerPaymentProvider', () => {
   it('con Stripe fallando abre el circuito y responde provider_unavailable sin llamar al proveedor', async () => {
     const c = clock();
     const inner = {
+      metadata: META,
       authorize: jest.fn().mockResolvedValue({ outcome: 'timeout', errorCode: 'provider_timeout' }),
       capture: jest.fn(),
       queryStatus: jest.fn(),
@@ -94,6 +96,7 @@ describe('CircuitBreakerPaymentProvider', () => {
     const c = clock();
     const breaker = new CircuitBreaker('stripe', options, c.now);
     const inner = {
+      metadata: META,
       authorize: jest.fn().mockResolvedValue({ outcome: 'declined', errorCode: 'card_declined' }),
       capture: jest.fn(),
       queryStatus: jest.fn(),
@@ -106,7 +109,7 @@ describe('CircuitBreakerPaymentProvider', () => {
   it('una excepción del adaptador cuenta como fallo y se propaga', async () => {
     const c = clock();
     const breaker = new CircuitBreaker('stripe', options, c.now);
-    const inner = { authorize: jest.fn().mockRejectedValue(new Error('boom')), capture: jest.fn(), queryStatus: jest.fn() };
+    const inner = { metadata: META, authorize: jest.fn().mockRejectedValue(new Error('boom')), capture: jest.fn(), queryStatus: jest.fn() };
     const provider = new CircuitBreakerPaymentProvider(inner, breaker);
     await expect(provider.authorize(input)).rejects.toThrow('boom');
     expect(breaker.snapshot().requestsInWindow).toBe(1);
@@ -114,8 +117,8 @@ describe('CircuitBreakerPaymentProvider', () => {
 
   it('circuitos independientes: Stripe abierto no afecta a QR', async () => {
     const c = clock();
-    const failing = { authorize: jest.fn().mockResolvedValue({ outcome: 'error' }), capture: jest.fn(), queryStatus: jest.fn() };
-    const healthy = { authorize: jest.fn().mockResolvedValue({ outcome: 'approved' }), capture: jest.fn(), queryStatus: jest.fn() };
+    const failing = { metadata: META, authorize: jest.fn().mockResolvedValue({ outcome: 'error' }), capture: jest.fn(), queryStatus: jest.fn() };
+    const healthy = { metadata: META, authorize: jest.fn().mockResolvedValue({ outcome: 'approved' }), capture: jest.fn(), queryStatus: jest.fn() };
     const stripe = new CircuitBreakerPaymentProvider(failing, new CircuitBreaker('stripe', options, c.now));
     const qr = new CircuitBreakerPaymentProvider(healthy, new CircuitBreaker('qr', options, c.now));
     for (let i = 0; i < 5; i++) await stripe.authorize(input);

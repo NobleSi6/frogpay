@@ -51,6 +51,11 @@ export const ERROR_CATALOG = {
     code: 'qr_expired',
     message: 'El código QR del pago venció.',
   },
+  invalid_state_transition: {
+    code: 'invalid_state_transition',
+    httpStatus: 409,
+    message: 'La operación no es válida para el estado actual del recurso.',
+  },
 } as const;
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;
