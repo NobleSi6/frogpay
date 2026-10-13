@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Catch,
   ExceptionFilter,
+  HttpException,
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
@@ -65,6 +66,56 @@ export class HttpExceptionFilter implements ExceptionFilter {
         details: details ?? null,
         requestId,
       };
+    } else if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      if (status >= 500) {
+        payload = {
+          code: 'internal_error',
+          message: 'Error interno del servidor',
+          details: null,
+          requestId,
+        };
+        this.logger.error(
+          `HTTP ${status} exception (requestId=${requestId})`,
+          exception.stack,
+        );
+      } else {
+        const exceptionResponse = exception.getResponse();
+        const responseBody =
+          this.isRecord(exceptionResponse)
+            ? exceptionResponse
+            : {};
+        const responseCode =
+          'code' in responseBody && typeof responseBody.code === 'string'
+            ? responseBody.code
+            : undefined;
+        const responseMessage =
+          'message' in responseBody && typeof responseBody.message === 'string'
+            ? responseBody.message
+            : undefined;
+        const responseDetails = 'details' in responseBody ? responseBody.details : null;
+
+        payload = {
+          code:
+            responseCode ??
+            (status === 401
+              ? 'unauthorized'
+              : status === 403
+                ? 'forbidden'
+                : status === 404
+                  ? 'not_found'
+                  : `http_${status}`),
+          message:
+            responseMessage ??
+            (Array.isArray(responseBody.message)
+              ? 'La solicitud contiene datos inválidos.'
+              : 'La solicitud no pudo ser procesada.'),
+          details:
+            responseDetails ??
+            (Array.isArray(responseBody.message) ? responseBody.message : null),
+          requestId,
+        };
+      }
     } else {
       payload = {
         code: 'internal_error',
@@ -92,5 +143,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       exception instanceof IdempotencyKeyReusedError ||
       exception instanceof PlanLimitExceededError
     );
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }
