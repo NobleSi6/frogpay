@@ -7,12 +7,19 @@ export const ERROR_CATALOG = {
   idempotency_in_progress: {
     code: 'idempotency_in_progress',
     httpStatus: 409,
-    message: 'Ya existe una solicitud en proceso para esta clave de idempotencia.',
+    message:
+      'Ya existe una solicitud en proceso para esta clave de idempotencia.',
   },
   idempotency_key_reused: {
     code: 'idempotency_key_reused',
     httpStatus: 422,
-    message: 'La clave de idempotencia ya fue utilizada con una solicitud diferente.',
+    message:
+      'La clave de idempotencia ya fue utilizada con una solicitud diferente.',
+  },
+  deposit_id_reused: {
+    code: 'deposit_id_reused',
+    httpStatus: 409,
+    message: 'El identificador del depósito ya fue utilizado con otros datos.',
   },
   plan_limit_exceeded: {
     code: 'plan_limit_exceeded',
@@ -50,6 +57,22 @@ export const ERROR_CATALOG = {
   qr_expired: {
     code: 'qr_expired',
     message: 'El código QR del pago venció.',
+  },
+  transfer_expired: {
+    code: 'transfer_expired',
+    message: 'La transferencia bancaria venció sin recibir depósito.',
+  },
+  amount_mismatch: {
+    code: 'amount_mismatch',
+    message: 'El monto del depósito no coincide con el monto del pago.',
+  },
+  currency_mismatch: {
+    code: 'currency_mismatch',
+    message: 'La moneda del depósito no coincide con la moneda del pago.',
+  },
+  reference_not_found: {
+    code: 'reference_not_found',
+    message: 'La referencia bancaria no corresponde a ningún pago pendiente.',
   },
 } as const;
 

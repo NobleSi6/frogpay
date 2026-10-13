@@ -1,4 +1,5 @@
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { INestApplication } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -10,6 +11,7 @@ import { JwtTokenService } from '../../src/shared/auth/jwt-token.service';
 import { AuthenticationGuard } from '../../src/shared/auth/authentication.guard';
 import { RolesGuard } from '../../src/shared/auth/roles.guard';
 import { PaymentQrExpirationJob } from '../../src/modules/payments/application/use-cases/payment-qr-expiration.job';
+import { PaymentQrAutoConfirmJob } from '../../src/modules/simulators/application/payment-qr-auto-confirm.job';
 import { PaymentSettlementService } from '../../src/modules/payments/application/use-cases/payment-settlement.service';
 import { IdempotencyService } from '../../src/modules/payments/infrastructure/idempotency/idempotency.service';
 import { RedisService } from '../../src/shared/cache/redis.service';
@@ -18,6 +20,7 @@ import { ConfigModule } from '@nestjs/config';
 import configuration from '../../src/config/configuration';
 import { validateEnvironment } from '../../src/config/env.validation';
 import { PaymentsModule } from '../../src/modules/payments/payments.module';
+import { SimulatorsModule } from '../../src/modules/simulators/simulators.module';
 import { IdentityModule } from '../../src/modules/identity/identity.module';
 import { DashboardModule } from '../../src/modules/dashboard/dashboard.module';
 import { ProviderAdaptersModule } from '../../src/modules/provider-adapters/provider-adapters.module';
@@ -35,6 +38,10 @@ process.env.PAYMENT_MOCK_ADAPTER_ENABLED = 'false';
 process.env.PAYMENT_PROVIDER_BINDINGS = '';
 process.env.QR_EXPIRATION_JOB_ENABLED = 'true';
 process.env.QR_EXPIRATION_JOB_INTERVAL_SECONDS = '3600';
+process.env.QR_SIMULATORS_ENABLED = 'true';
+process.env.QR_AUTO_CONFIRM_ENABLED = 'false';
+process.env.QR_AUTO_CONFIRM_SECONDS = '10';
+process.env.QR_AUTO_CONFIRM_INTERVAL_SECONDS = '3600';
 process.env.OUTBOX_PUBLISHER_ENABLED = 'false';
 process.env.REDIS_HOST = '127.0.0.1';
 process.env.REDIS_PORT = '1';
@@ -42,8 +49,12 @@ process.env.REDIS_PORT = '1';
 type IntegrationFixture = {
   tenantId: string;
   planId: string;
+  foreignTenantId: string;
+  foreignPlanId: string;
   apiKey: string;
+  productionApiKey: string;
   jwt: string;
+  adminJwt: string;
 };
 
 function assertLocalDatabaseUrl(raw: string, expectedUser: string): void {
@@ -148,10 +159,10 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     };
     const stripeClientStub = {
       paymentIntents: {
-        create: jest.fn().mockResolvedValue({
-          id: 'pi_local_integration',
+        create: jest.fn().mockImplementation(() => ({
+          id: `pi_local_integration_${randomUUID().replaceAll('-', '')}`,
           status: 'succeeded',
-        }),
+        })),
         retrieve: jest.fn(),
       },
     };
@@ -166,6 +177,7 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
         PaymentsModule,
         IdentityModule,
         DashboardModule,
+        SimulatorsModule,
         ProviderAdaptersModule,
         PrismaModule,
       ],
@@ -202,10 +214,14 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     }
 
     const tenantId = randomUUID();
+    const foreignTenantId = randomUUID();
     const planName = `QR integration ${tenantId}`;
+    const foreignPlanName = `QR integration foreign ${foreignTenantId}`;
     const keyPrefix = `fp_test_${randomUUID().replaceAll('-', '').slice(0, 4)}`;
     const keySecret = randomUUID();
-    const tenant = await adminPrisma.$transaction(async (tx) => {
+    const productionKeyPrefix = `fp_live_${randomUUID().replaceAll('-', '').slice(0, 4)}`;
+    const productionKeySecret = randomUUID();
+    const tenantFixtures = await adminPrisma.$transaction(async (tx) => {
       const plan = await tx.plan.create({
         data: {
           name: planName,
@@ -238,7 +254,44 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
           masked_key: `${keyPrefix}...`,
         },
       });
-      return { planId: plan.id, id: createdTenant.id };
+      await tx.api_key.create({
+        data: {
+          tenant_id: tenantId,
+          name: 'QR integration production key',
+          key_prefix: productionKeyPrefix,
+          secret_hash: CryptoUtil.hashString(productionKeySecret),
+          environment: 'production',
+          status: 'active',
+          masked_key: `${productionKeyPrefix}...`,
+        },
+      });
+
+      const foreignPlan = await tx.plan.create({
+        data: {
+          name: foreignPlanName,
+          monthly_price: '0.00',
+          commission_fixed: '0.50',
+          commission_pct: '0.0350',
+          monthly_volume_limit: null,
+          features: {},
+        },
+      });
+      await tx.tenant.create({
+        data: {
+          id: foreignTenantId,
+          name: `QR Integration ${foreignTenantId}`,
+          business_name: `QR Integration ${foreignTenantId}`,
+          tax_id: `QR-${foreignTenantId}`,
+          contact_email: 'qr-integration-foreign@example.test',
+          status: 'active',
+          plan_id: foreignPlan.id,
+        },
+      });
+      return {
+        planId: plan.id,
+        id: createdTenant.id,
+        foreignPlanId: foreignPlan.id,
+      };
     });
     const jwt = app.get(JwtTokenService).sign({
       id: randomUUID(),
@@ -246,11 +299,21 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       role: 'OWNER',
       tenantId,
     }).accessToken;
+    const adminJwt = app.get(JwtTokenService).sign({
+      id: randomUUID(),
+      email: 'qr-integration-admin@example.test',
+      role: 'ADMIN',
+      tenantId,
+    }).accessToken;
     fixture = {
-      tenantId: tenant.id,
-      planId: tenant.planId,
+      tenantId: tenantFixtures.id,
+      planId: tenantFixtures.planId,
+      foreignTenantId,
+      foreignPlanId: tenantFixtures.foreignPlanId,
       apiKey: `${keyPrefix}.${keySecret}`,
+      productionApiKey: `${productionKeyPrefix}.${productionKeySecret}`,
       jwt,
+      adminJwt,
     };
   });
 
@@ -262,21 +325,18 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
           await tx.$executeRawUnsafe(
             'ALTER TABLE public.payment_status_history DISABLE TRIGGER trg_psh_immutable',
           );
-          await tx.payment_status_history.deleteMany({
-            where: { tenant_id: cleanupFixture.tenantId },
+          const tenantIds = [cleanupFixture.tenantId, cleanupFixture.foreignTenantId];
+          for (const tenantId of tenantIds) {
+            await tx.payment_status_history.deleteMany({ where: { tenant_id: tenantId } });
+            await tx.domain_event_outbox.deleteMany({ where: { tenant_id: tenantId } });
+            await tx.payment.deleteMany({ where: { tenant_id: tenantId } });
+            await tx.tenant_plan_usage.deleteMany({ where: { tenant_id: tenantId } });
+            await tx.api_key.deleteMany({ where: { tenant_id: tenantId } });
+            await tx.tenant.delete({ where: { id: tenantId } });
+          }
+          await tx.plan.deleteMany({
+            where: { id: { in: [cleanupFixture.planId, cleanupFixture.foreignPlanId] } },
           });
-          await tx.domain_event_outbox.deleteMany({
-            where: { tenant_id: cleanupFixture.tenantId },
-          });
-          await tx.payment.deleteMany({ where: { tenant_id: cleanupFixture.tenantId } });
-          await tx.tenant_plan_usage.deleteMany({
-            where: { tenant_id: cleanupFixture.tenantId },
-          });
-          await tx.api_key.deleteMany({
-            where: { tenant_id: cleanupFixture.tenantId },
-          });
-          await tx.tenant.delete({ where: { id: cleanupFixture.tenantId } });
-          await tx.plan.delete({ where: { id: cleanupFixture.planId } });
           await tx.$executeRawUnsafe(
             'ALTER TABLE public.payment_status_history ENABLE TRIGGER trg_psh_immutable',
           );
@@ -494,4 +554,348 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     expect(unknownPaymentCount).toBe(0);
     console.log(`UNKNOWN_METHOD_PAYMENT_ROWS=${unknownPaymentCount}`);
   });
+
+  it('simulates QR callbacks and dashboard actions and auto-confirms safely', async () => {
+    const testApp = app;
+    const testFixture = fixture;
+    const sqlPrisma = adminPrisma;
+    if (!testApp || !testFixture || !sqlPrisma) {
+      throw new Error('La aplicación o el fixture no se inicializó.');
+    }
+
+    const http = request(testApp.getHttpServer());
+    const config = testApp.get(ConfigService);
+    const autoConfirm = testApp.get(PaymentQrAutoConfirmJob);
+    const expiration = testApp.get(PaymentQrExpirationJob);
+    const createQrPayment = async (merchantReference: string): Promise<string> => {
+      const response = await http
+        .post('/api/v1/payments')
+        .auth(testFixture.jwt, { type: 'bearer' })
+        .set('X-Api-Key', testFixture.apiKey)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          amount: '25.00',
+          currency: 'BOB',
+          paymentMethod: 'qr',
+          merchantReference,
+        })
+        .expect(201);
+      return String(response.body.id);
+    };
+    const simulateDashboard = (
+      paymentId: string,
+      jwt: string,
+      result: 'APPROVED' | 'FAILED',
+    ) =>
+      http
+        .post(`/api/dashboard/payments/${paymentId}/simulate`)
+        .auth(jwt, { type: 'bearer' })
+        .send({ result });
+    const simulateCallback = (
+      paymentId: string,
+      apiKey: string,
+      result: 'APPROVED' | 'FAILED',
+    ) =>
+      http
+        .post('/api/v1/test/simulators/qr-callback')
+        .set('X-Api-Key', apiKey)
+        .send({ payment_id: paymentId, result });
+    const eventCount = (paymentId: string, eventType: string) =>
+      sqlPrisma.domain_event_outbox.count({
+        where: {
+          tenant_id: testFixture.tenantId,
+          aggregate_id: paymentId,
+          event_type: eventType,
+        },
+      });
+
+    const dashboardApprovedId = await createQrPayment('dashboard-simulator-approved');
+    const unauthenticatedDashboard = await http
+      .post(`/api/dashboard/payments/${dashboardApprovedId}/simulate`)
+      .send({ result: 'APPROVED' });
+    expect(unauthenticatedDashboard.status).toBe(500);
+    expect(unauthenticatedDashboard.body.code).toBe('internal_error');
+    await simulateDashboard(dashboardApprovedId, testFixture.adminJwt, 'APPROVED').expect(500);
+    const dashboardResult = await simulateDashboard(
+      dashboardApprovedId,
+      testFixture.jwt,
+      'APPROVED',
+    ).expect(200);
+    expect(dashboardResult.body).toEqual({
+      paymentId: dashboardApprovedId,
+      status: 'approved',
+      changed: true,
+    });
+    const dashboardGet = await http
+      .get(`/api/dashboard/payments/${dashboardApprovedId}`)
+      .auth(testFixture.jwt, { type: 'bearer' })
+      .expect(200);
+    expect(dashboardGet.body.status).toBe('approved');
+    expect(dashboardGet.body.statusHistory.map((item: { newStatus: string }) => item.newStatus))
+      .toEqual(['pending', 'approved']);
+    expect(await eventCount(dashboardApprovedId, 'pago.aprobado')).toBe(1);
+    console.log(`QR_SIMULATE_RESPONSE=${JSON.stringify(dashboardResult.body)}`);
+    console.log(`QR_SIMULATE_GET=${JSON.stringify(dashboardGet.body)}`);
+
+    const dashboardFailedId = await createQrPayment('dashboard-simulator-failed');
+    const dashboardFailed = await simulateDashboard(
+      dashboardFailedId,
+      testFixture.jwt,
+      'FAILED',
+    ).expect(200);
+    expect(dashboardFailed.body).toEqual({
+      paymentId: dashboardFailedId,
+      status: 'rejected',
+      changed: true,
+    });
+    const failedPayment = await sqlPrisma.payment.findUniqueOrThrow({
+      where: { id: dashboardFailedId },
+    });
+    expect(failedPayment.error_code).toBe('processing_error');
+    expect(await eventCount(dashboardFailedId, 'pago.rechazado')).toBe(1);
+
+    const callbackPaymentId = await createQrPayment('qr-callback-approved');
+    const callbackWithoutKey = await http
+      .post('/api/v1/test/simulators/qr-callback')
+      .send({ payment_id: callbackPaymentId, result: 'APPROVED' });
+    expect(callbackWithoutKey.status).toBe(500);
+    expect(callbackWithoutKey.body.code).toBe('internal_error');
+
+    const callbackFirst = await simulateCallback(
+      callbackPaymentId,
+      testFixture.apiKey,
+      'APPROVED',
+    ).expect(200);
+    const callbackRepeat = await simulateCallback(
+      callbackPaymentId,
+      testFixture.apiKey,
+      'APPROVED',
+    ).expect(200);
+    expect(callbackFirst.body).toEqual({
+      paymentId: callbackPaymentId,
+      status: 'approved',
+      changed: true,
+    });
+    expect(callbackRepeat.body).toEqual({
+      paymentId: callbackPaymentId,
+      status: 'approved',
+      changed: false,
+    });
+    expect(await eventCount(callbackPaymentId, 'pago.aprobado')).toBe(1);
+    console.log(`QR_CALLBACK_FIRST=${JSON.stringify(callbackFirst.body)}`);
+    console.log(`QR_CALLBACK_REPEAT=${JSON.stringify(callbackRepeat.body)}`);
+
+    const callbackFailedId = await createQrPayment('qr-callback-failed');
+    const callbackFailed = await simulateCallback(
+      callbackFailedId,
+      testFixture.apiKey,
+      'FAILED',
+    ).expect(200);
+    expect(callbackFailed.body.status).toBe('rejected');
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: callbackFailedId } }))
+        .error_code,
+    ).toBe('processing_error');
+
+    const foreignPaymentId = await createQrFixturePayment(
+      sqlPrisma,
+      testFixture.foreignTenantId,
+      { environment: 'production' },
+    );
+    const foreignDashboard = await simulateDashboard(
+      foreignPaymentId,
+      testFixture.jwt,
+      'APPROVED',
+    );
+    expect(foreignDashboard.status).toBe(500);
+    expect(foreignDashboard.body.code).toBe('internal_error');
+    const foreignCallback = await simulateCallback(
+      foreignPaymentId,
+      testFixture.apiKey,
+      'APPROVED',
+    );
+    expect(foreignCallback.status).toBe(500);
+    expect(foreignCallback.body.code).toBe('internal_error');
+
+    const productionPaymentId = await createQrFixturePayment(
+      sqlPrisma,
+      testFixture.tenantId,
+      { environment: 'production' },
+    );
+    const productionDashboard = await simulateDashboard(
+      productionPaymentId,
+      testFixture.jwt,
+      'APPROVED',
+    );
+    expect(productionDashboard.status).toBe(500);
+    const productionCallback = await simulateCallback(
+      productionPaymentId,
+      testFixture.productionApiKey,
+      'APPROVED',
+    );
+    expect(productionCallback.status).toBe(500);
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: productionPaymentId } }))
+        .status,
+    ).toBe('pending');
+
+    const cardResponse = await http
+      .post('/api/v1/payments')
+      .auth(testFixture.jwt, { type: 'bearer' })
+      .set('X-Api-Key', testFixture.apiKey)
+      .set('Idempotency-Key', randomUUID())
+      .send({
+        amount: '12.00',
+        currency: 'BOB',
+        paymentMethod: 'card',
+        merchantReference: 'card-before-auto-confirm',
+        paymentToken: 'pm_test_local_card',
+      })
+      .expect(201);
+    const cardUpdatedAt = await sqlPrisma.payment.findUniqueOrThrow({
+      where: { id: String(cardResponse.body.id) },
+      select: { updated_at: true },
+    });
+    expect(cardResponse.body.status).toBe('approved');
+
+    const disabledWorkerId = await createQrPayment('qr-auto-confirm-disabled');
+    await sqlPrisma.payment.update({
+      where: { id: disabledWorkerId },
+      data: { created_at: new Date(Date.now() - 20_000) },
+    });
+    config.set('qrAutoConfirmEnabled', false);
+    await autoConfirm.runOnce();
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: disabledWorkerId } }))
+        .status,
+    ).toBe('pending');
+
+    const matureWorkerId = await createQrPayment('qr-auto-confirm-mature');
+    config.set('qrAutoConfirmEnabled', true);
+    const productionWorkerId = await createQrFixturePayment(
+      sqlPrisma,
+      testFixture.tenantId,
+      {
+        environment: 'production',
+        createdAt: new Date(Date.now() - 20_000),
+      },
+    );
+    await autoConfirm.runOnce();
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: matureWorkerId } }))
+        .status,
+    ).toBe('pending');
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: productionWorkerId } }))
+        .status,
+    ).toBe('pending');
+    await sqlPrisma.payment.update({
+      where: { id: matureWorkerId },
+      data: { created_at: new Date(Date.now() - 11_000) },
+    });
+    await autoConfirm.runOnce();
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: matureWorkerId } }))
+        .status,
+    ).toBe('approved');
+    expect(await eventCount(matureWorkerId, 'pago.aprobado')).toBe(1);
+    console.log(
+      `QR_AUTO_CONFIRM=${JSON.stringify({
+        beforeThreshold: 'pending',
+        afterThreshold: 'approved',
+        eventCount: await eventCount(matureWorkerId, 'pago.aprobado'),
+      })}`,
+    );
+
+    const expiredPaymentId = await createQrFixturePayment(sqlPrisma, testFixture.tenantId, {
+      expiresAt: new Date(Date.now() - 60_000),
+      createdAt: new Date(Date.now() - 20_000),
+    });
+    const expiredSimulation = await simulateDashboard(
+      expiredPaymentId,
+      testFixture.jwt,
+      'APPROVED',
+    ).expect(200);
+    expect(expiredSimulation.body).toEqual({
+      paymentId: expiredPaymentId,
+      status: 'pending',
+      changed: false,
+    });
+    await Promise.all([autoConfirm.runOnce(), expiration.runOnce()]);
+    const expiredFinal = await sqlPrisma.payment.findUniqueOrThrow({
+      where: { id: expiredPaymentId },
+    });
+    expect(expiredFinal.status).toBe('rejected');
+    expect(expiredFinal.error_code).toBe('qr_expired');
+    expect(await eventCount(expiredPaymentId, 'pago.aprobado')).toBe(0);
+    expect(await eventCount(expiredPaymentId, 'pago.rechazado')).toBe(1);
+
+    const racePaymentId = await createQrPayment('qr-auto-confirm-callback-race');
+    await sqlPrisma.payment.update({
+      where: { id: racePaymentId },
+      data: { created_at: new Date(Date.now() - 11_000) },
+    });
+    const [raceCallback] = await Promise.all([
+      simulateCallback(racePaymentId, testFixture.apiKey, 'APPROVED'),
+      autoConfirm.runOnce(),
+    ]);
+    expect(raceCallback.status).toBe(200);
+    expect(raceCallback.body.status).toBe('approved');
+    expect(
+      (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: racePaymentId } })).status,
+    ).toBe('approved');
+    expect(await eventCount(racePaymentId, 'pago.aprobado')).toBe(1);
+    expect(await eventCount(disabledWorkerId, 'pago.aprobado')).toBe(1);
+    expect(
+      await sqlPrisma.payment.findUniqueOrThrow({
+        where: { id: String(cardResponse.body.id) },
+        select: { updated_at: true },
+      }),
+    ).toEqual(cardUpdatedAt);
+    config.set('qrAutoConfirmEnabled', false);
+  });
 });
+
+async function createQrFixturePayment(
+  prisma: PrismaClient,
+  tenantId: string,
+  options: {
+    environment?: 'sandbox' | 'production';
+    expiresAt?: Date;
+    createdAt?: Date;
+  } = {},
+): Promise<string> {
+  return prisma.$transaction(async (tx) => {
+    const method = await tx.payment_method.findUniqueOrThrow({ where: { code: 'qr' } });
+    const provider = await tx.provider.findFirstOrThrow({
+      where: { code: 'qr_local', is_active: true },
+    });
+    const payment = await tx.payment.create({
+      data: {
+        tenant_id: tenantId,
+        idempotency_key: randomUUID(),
+        idempotency_body_hash: 'qr-simulator-integration-fixture',
+        amount: '25.00',
+        currency: 'BOB',
+        status: 'pending',
+        payment_method_id: method.id,
+        provider_id: provider.id,
+        environment: options.environment ?? 'sandbox',
+        qr_payload: 'qr-simulator-fixture-payload',
+        expires_at: options.expiresAt ?? new Date(Date.now() + 900_000),
+        created_at: options.createdAt,
+        merchant_reference: `qr-simulator-fixture-${randomUUID()}`,
+      },
+    });
+    await tx.payment_status_history.create({
+      data: {
+        payment_id: payment.id,
+        tenant_id: tenantId,
+        previous_status: null,
+        new_status: 'pending',
+        metadata: {},
+      },
+    });
+    return payment.id;
+  });
+}

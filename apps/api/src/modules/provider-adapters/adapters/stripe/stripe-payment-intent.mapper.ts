@@ -10,6 +10,7 @@ export const AdapterErrorCode = {
   VALIDATION_ERROR: ERROR_CATALOG.validation_error.code,
   IDEMPOTENCY_IN_PROGRESS: ERROR_CATALOG.idempotency_in_progress.code,
   IDEMPOTENCY_KEY_REUSED: ERROR_CATALOG.idempotency_key_reused.code,
+  DEPOSIT_ID_REUSED: ERROR_CATALOG.deposit_id_reused.code,
   PLAN_LIMIT_EXCEEDED: ERROR_CATALOG.plan_limit_exceeded.code,
   CARD_DECLINED: ERROR_CATALOG.card_declined.code,
   INSUFFICIENT_FUNDS: ERROR_CATALOG.insufficient_funds.code,
@@ -19,6 +20,10 @@ export const AdapterErrorCode = {
   PROVIDER_TIMEOUT: ERROR_CATALOG.provider_timeout.code,
   PROVIDER_UNAVAILABLE: ERROR_CATALOG.provider_unavailable.code,
   QR_EXPIRED: ERROR_CATALOG.qr_expired.code,
+  TRANSFER_EXPIRED: ERROR_CATALOG.transfer_expired.code,
+  AMOUNT_MISMATCH: ERROR_CATALOG.amount_mismatch.code,
+  CURRENCY_MISMATCH: ERROR_CATALOG.currency_mismatch.code,
+  REFERENCE_NOT_FOUND: ERROR_CATALOG.reference_not_found.code,
 } as const;
 
 /**

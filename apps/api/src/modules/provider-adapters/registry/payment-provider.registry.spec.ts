@@ -60,7 +60,7 @@ describe('PaymentProviderRegistry', () => {
   it('normalizes method codes for resolve, supports, and capabilityOf', () => {
     const registry = new PaymentProviderRegistry(
       [{ adapterCode: 'stripe', adapter: stripe }],
-      DEFAULT_PAYMENT_PROVIDER_BINDINGS,
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
     );
 
     expect(registry.resolve(' CARD ')).toBe(stripe);
@@ -100,7 +100,7 @@ describe('PaymentProviderRegistry', () => {
   it('throws UnsupportedPaymentMethodError for unknown methods', () => {
     const registry = new PaymentProviderRegistry(
       [{ adapterCode: 'stripe', adapter: stripe }],
-      DEFAULT_PAYMENT_PROVIDER_BINDINGS,
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
     );
 
     expect(registry.supports('qr')).toBe(false);
@@ -156,7 +156,7 @@ describe('PaymentProviderRegistry', () => {
       () =>
         new PaymentProviderRegistry(
           [{ adapterCode: 'another-id', adapter: stripe }],
-          DEFAULT_PAYMENT_PROVIDER_BINDINGS,
+          [{ paymentMethod: 'card', adapterCode: 'stripe' }],
         ),
     ).toThrow(InvalidPaymentProviderBindingsError);
   });
@@ -167,7 +167,7 @@ describe('PaymentProviderRegistry', () => {
         { adapterCode: 'stripe', adapter: stripe },
         { adapterCode: 'azzurra', adapter: azzurra },
       ],
-      DEFAULT_PAYMENT_PROVIDER_BINDINGS,
+      [{ paymentMethod: 'card', adapterCode: 'stripe' }],
     );
 
     expect(registry.resolve('card')).toBe(stripe);
@@ -192,8 +192,12 @@ describe('PaymentProviderRegistry', () => {
 });
 
 describe('DEFAULT_PAYMENT_PROVIDER_BINDINGS', () => {
-  it('preserves card=stripe as the default override', () => {
-    expect(DEFAULT_PAYMENT_PROVIDER_BINDINGS).toEqual([{ paymentMethod: 'card', adapterCode: 'stripe' }]);
+  it('provides defaults for card, bank transfer, and QR', () => {
+    expect(DEFAULT_PAYMENT_PROVIDER_BINDINGS).toEqual([
+      { paymentMethod: 'card', adapterCode: 'stripe' },
+      { paymentMethod: 'bank_transfer', adapterCode: 'bank_transfer_local' },
+      { paymentMethod: 'qr', adapterCode: 'qr_local' },
+    ]);
   });
 });
 

@@ -42,6 +42,17 @@ export class PaymentSettlementService {
         return { outcome: 'unchanged', paymentId, reason: 'not_pending' };
       }
 
+      const approvalTime = new Date();
+      const isQrPayment = payment.provider.payment_method.code === 'qr';
+      if (
+        status === 'approved' &&
+        isQrPayment &&
+        payment.expires_at &&
+        payment.expires_at <= approvalTime
+      ) {
+        return { outcome: 'unchanged', paymentId, reason: 'not_pending' };
+      }
+
       const amounts = calculatePaymentAmounts(
         Number(payment.amount),
         Number(payment.tenant.plan?.commission_fixed ?? 0),
@@ -56,7 +67,13 @@ export class PaymentSettlementService {
         )
       `;
       const changed = await tx.payment.updateMany({
-        where: { id: paymentId, status: 'pending' },
+        where: {
+          id: paymentId,
+          status: 'pending',
+          ...(status === 'approved' && isQrPayment
+            ? { expires_at: { gt: approvalTime } }
+            : {}),
+        },
         data: {
           status,
           commission_amount: status === 'approved' ? amounts.commissionAmount : null,

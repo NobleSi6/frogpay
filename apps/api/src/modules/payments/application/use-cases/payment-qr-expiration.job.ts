@@ -53,7 +53,11 @@ export class PaymentQrExpirationJob implements OnApplicationBootstrap, OnModuleD
   private async expirePendingPayments(): Promise<void> {
     const expiredPayments = await this.tenantContext.withGlobalAccess((tx) =>
       tx.payment.findMany({
-        where: { status: 'pending', expires_at: { lte: new Date() } },
+        where: {
+          status: 'pending',
+          expires_at: { lte: new Date() },
+          provider: { payment_method: { code: 'qr' } },
+        },
         orderBy: { expires_at: 'asc' },
         select: { id: true },
         take: BATCH_SIZE,
