@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { SPRINT1_DEMO_MODE } from '@/lib/demo-mode';
 import { paymentsService } from '../services/payments.service';
 import type { PaymentDetail } from '../services/payments.service';
@@ -17,12 +18,11 @@ export function useQrPayment(paymentId: string) {
   });
 
   const simulateMutation = useMutation({
-    mutationFn: async (result: 'APPROVED' | 'REJECTED') => {
-      if (SPRINT1_DEMO_MODE) {
-        await paymentsService.simulateQrPayment(paymentId, result);
-      }
-    },
+    mutationFn: (result: 'APPROVED' | 'REJECTED') =>
+      paymentsService.simulateQrPayment(paymentId, result),
     onMutate: async (result) => {
+      if (!SPRINT1_DEMO_MODE) return undefined;
+
       const queryKey = ['payment-detail', paymentId];
       await queryClient.cancelQueries({ queryKey });
       const previousPayment = queryClient.getQueryData<PaymentDetail>(queryKey);
@@ -45,12 +45,21 @@ export function useQrPayment(paymentId: string) {
         queryClient.setQueryData(['payment-detail', paymentId], context.previousPayment);
       }
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] }),
   });
 
   const expireMutation = useMutation({
     mutationFn: () => paymentsService.expireMockQrPayment(paymentId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] }),
   });
+  const expireMockQrPayment = expireMutation.mutate;
+  const expirePayment = useCallback(() => {
+    if (SPRINT1_DEMO_MODE) {
+      expireMockQrPayment();
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] });
+  }, [expireMockQrPayment, paymentId, queryClient]);
 
   return {
     ...query,
@@ -58,6 +67,6 @@ export function useQrPayment(paymentId: string) {
     simulatePayment: simulateMutation.mutate,
     isSimulating: simulateMutation.isPending,
     simulationError: simulateMutation.error,
-    expirePayment: expireMutation.mutate,
+    expirePayment,
   };
 }

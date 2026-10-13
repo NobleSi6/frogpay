@@ -5,6 +5,7 @@ import { Calendar, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorAlert } from '@/components/shared/error-alert';
 import { useReconciliation } from '../hooks/useReconciliation';
 import { ReconciliationStatus } from '../services/reconciliation.service';
 
@@ -21,10 +22,14 @@ const statusConfig: Record<ReconciliationStatus, { label: string; className: str
     label: 'Monto distinto',
     className: 'bg-amber-50 text-amber-600 border-none font-medium',
   },
+  CURRENCY_MISMATCH: {
+    label: 'Moneda distinta',
+    className: 'bg-amber-50 text-amber-600 border-none font-medium',
+  },
 };
 
 export function BankReconciliationTable() {
-  const { transactions, isLoading } = useReconciliation();
+  const { transactions, isLoading, isError, error } = useReconciliation();
 
   return (
     <Card className="shadow-sm border-slate-200/80 rounded-2xl bg-white">
@@ -45,6 +50,11 @@ export function BankReconciliationTable() {
       </CardHeader>
 
       <CardContent className="p-0">
+        {isError && (
+          <div className="px-6 py-4">
+            <ErrorAlert error={error} title="No pudimos cargar la conciliación bancaria" />
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -63,7 +73,7 @@ export function BankReconciliationTable() {
                     Cargando depósitos bancarios...
                   </td>
                 </tr>
-              ) : transactions.length === 0 ? (
+              ) : transactions.length === 0 && !isError ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">
                     No se encontraron depósitos.

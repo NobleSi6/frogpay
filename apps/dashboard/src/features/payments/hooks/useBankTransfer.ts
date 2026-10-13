@@ -1,4 +1,6 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SPRINT1_DEMO_MODE } from '@/lib/demo-mode';
 import {
   bankTransferService,
   type BankSimulationType,
@@ -19,13 +21,24 @@ export function useBankTransfer(paymentId: string) {
   const simulateDepositMutation = useMutation({
     mutationFn: (simulationType: BankSimulationType) =>
       bankTransferService.simulateBankDeposit(paymentId, simulationType),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
+    },
   });
 
   const expireMutation = useMutation({
     mutationFn: () => bankTransferService.expireMockBankTransfer(paymentId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   });
+  const expireMockBankTransfer = expireMutation.mutate;
+  const expirePayment = useCallback(() => {
+    if (SPRINT1_DEMO_MODE) {
+      expireMockBankTransfer();
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ['bank-transfer-status', paymentId] });
+  }, [expireMockBankTransfer, paymentId, queryClient]);
 
   return {
     ...query,
@@ -33,6 +46,6 @@ export function useBankTransfer(paymentId: string) {
     simulateDeposit: simulateDepositMutation.mutate,
     isSimulating: simulateDepositMutation.isPending,
     simulationError: simulateDepositMutation.error,
-    expirePayment: expireMutation.mutate,
+    expirePayment,
   };
 }

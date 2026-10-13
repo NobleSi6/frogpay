@@ -11,6 +11,7 @@ export function useReconciliation() {
     transactions: query.data || [],
     isLoading: query.isLoading,
     isError: query.isError,
+    error: query.error,
     refetch: query.refetch,
   };
 }

@@ -1,6 +1,10 @@
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest } from '@/lib/api-client';
 
-export type ReconciliationStatus = 'CONCILIATED' | 'WITHOUT_REFERENCE' | 'AMOUNT_MISMATCH';
+export type ReconciliationStatus =
+  | 'CONCILIATED'
+  | 'WITHOUT_REFERENCE'
+  | 'AMOUNT_MISMATCH'
+  | 'CURRENCY_MISMATCH';
 
 export interface BankTransaction {
   id: string;
@@ -13,44 +17,63 @@ export interface BankTransaction {
   paymentId?: string;
 }
 
+interface BankTransactionsResponse {
+  data: Array<{
+    id: string;
+    reference: string;
+    amount: string;
+    currency: string;
+    bankName: string;
+    receivedAt: string;
+    status: 'reconciled' | 'amount_mismatch' | 'currency_mismatch' | 'unmatched';
+    paymentId: string | null;
+  }>;
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+function mapStatus(status: BankTransactionsResponse['data'][number]['status']): ReconciliationStatus {
+  switch (status) {
+    case 'reconciled':
+      return 'CONCILIATED';
+    case 'amount_mismatch':
+      return 'AMOUNT_MISMATCH';
+    case 'currency_mismatch':
+      return 'CURRENCY_MISMATCH';
+    case 'unmatched':
+      return 'WITHOUT_REFERENCE';
+  }
+}
+
 export const reconciliationService = {
   getBankTransactions: async (): Promise<BankTransaction[]> => {
-    try {
-      return await apiRequest<BankTransaction[]>('/dashboard/bank-transactions');
-    } catch (error) {
-      console.warn('[Backend no disponible] Usando Mock de Conciliación Bancaria:', error);
-      
-      // MOCK TEMPORAL alineado al mockup
-      return [
-        {
-          id: 'bt_1',
-          reference: 'TRX-28991',
-          createdAt: '24 Sep, 10:42',
-          bankName: 'Simulado',
-          amount: 1240.00,
-          currency: 'BOB',
-          status: 'CONCILIATED',
-          paymentId: 'pay_conciliated_101',
-        },
-        {
-          id: 'bt_2',
-          reference: 'TRX-289901',
-          createdAt: '23 Sep, 16:08',
-          bankName: 'Simulado',
-          amount: 8500.00,
-          currency: 'BOB',
-          status: 'WITHOUT_REFERENCE',
-        },
-        {
-          id: 'bt_3',
-          reference: 'TRX-39809',
-          createdAt: '22 Sep, 09:15',
-          bankName: 'Simulado',
-          amount: 349.00,
-          currency: 'BOB',
-          status: 'AMOUNT_MISMATCH',
-        },
-      ];
-    }
+    const response = await apiRequest<BankTransactionsResponse>(
+      '/dashboard/bank-transactions?page=1&limit=100',
+    );
+
+    return response.data.map((transaction) => {
+      const amount = Number(transaction.amount);
+      if (!Number.isFinite(amount)) {
+        throw new Error(`El backend devolvió un monto inválido para la transacción ${transaction.id}.`);
+      }
+
+      return {
+        id: transaction.id,
+        reference: transaction.reference,
+        createdAt: new Date(transaction.receivedAt).toLocaleString('es-BO', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }),
+        bankName: transaction.bankName,
+        amount,
+        currency: transaction.currency,
+        status: mapStatus(transaction.status),
+        paymentId: transaction.paymentId ?? undefined,
+      };
+    });
   },
 };

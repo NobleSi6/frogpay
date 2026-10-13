@@ -176,7 +176,11 @@ export const paymentsService = {
     result: 'APPROVED' | 'REJECTED',
   ): Promise<void> => {
     if (!SPRINT1_DEMO_MODE) {
-      throw new Error('La simulación remota de pagos QR no está disponible en el backend.');
+      await apiRequest(`/dashboard/payments/${encodeURIComponent(paymentId)}/simulate`, {
+        method: 'POST',
+        body: JSON.stringify({ result: result === 'REJECTED' ? 'FAILED' : result }),
+      });
+      return;
     }
 
     const payment = requireMockQrPayment(paymentId);
@@ -191,7 +195,10 @@ export const paymentsService = {
   },
 
   expireMockQrPayment: async (paymentId: string): Promise<void> => {
-    if (!SPRINT1_DEMO_MODE) return;
+    if (!SPRINT1_DEMO_MODE) {
+      await paymentsService.getPaymentById(paymentId);
+      return;
+    }
 
     const payment = requireMockQrPayment(paymentId);
     mockQrPayments.set(paymentId, {
