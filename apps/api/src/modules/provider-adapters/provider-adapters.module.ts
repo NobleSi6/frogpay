@@ -5,11 +5,8 @@ import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
 import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
 import { StripeCredentialsService } from './application/stripe-credentials.service';
 import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
-import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
-import {
-  STRIPE_ADAPTER_CODE,
-  stripeClientProvider,
-} from './adapters/stripe/stripe-client.provider';
+import type { PaymentProviderPort } from './ports/payment-provider.port';
+import { stripeClientProvider } from './adapters/stripe/stripe-client.provider';
 import {
   resolveStripeProviderConfig,
   STRIPE_PROVIDER_CONFIG,
@@ -18,8 +15,13 @@ import { PAYMENT_PROVIDER_PORT } from './ports/payment-provider.port';
 import {
   DEFAULT_PAYMENT_PROVIDER_BINDINGS,
   parsePaymentProviderBindings,
+  PaymentProviderRegistration,
 } from './registry/payment-provider.binding';
 import { PaymentProviderRegistry } from './registry/payment-provider.registry';
+import {
+  PAYMENT_PROVIDER_ADAPTERS,
+  PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+} from './provider-adapters.config';
 import { CircuitBreakerModule } from './resilience/circuit-breaker.module';
 import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
 
@@ -34,6 +36,7 @@ import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
     AdapterEventProbe,
     StripeCredentialsService,
     CredentialsEncryptionService,
+    ...PAYMENT_PROVIDER_ADAPTERS,
     {
       provide: STRIPE_PROVIDER_CONFIG,
       inject: [ConfigService],
@@ -48,13 +51,25 @@ import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
         }),
     },
     stripeClientProvider,
-    StripePaymentProviderAdapter,
     {
       provide: PAYMENT_PROVIDER_PORT,
-      useExisting: StripePaymentProviderAdapter,
+      useExisting: PAYMENT_PROVIDER_ADAPTERS[0],
+    },
+    {
+      provide: PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+      inject: [...PAYMENT_PROVIDER_ADAPTERS],
+      useFactory: (...adapters: PaymentProviderPort[]): PaymentProviderRegistration[] =>
+        adapters.map((adapter) => ({
+          adapterCode: adapter.metadata.id,
+          adapter,
+        })),
     },
     {
       provide: PaymentProviderRegistry,
+      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN],
+      useFactory: (
+        config: ConfigService,
+        registrations: PaymentProviderRegistration[],
       inject: [ConfigService, StripePaymentProviderAdapter, CircuitBreakerRegistry],
       useFactory: (
         config: ConfigService,
@@ -63,6 +78,7 @@ import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
       ): PaymentProviderRegistry => {
         // Cada adaptador se registra envuelto en su propio circuito (TSK-DEV2-304).
         const registry = new PaymentProviderRegistry(
+          registrations,
           [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: breakers.protect(STRIPE_ADAPTER_CODE, stripeAdapter) }],
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );

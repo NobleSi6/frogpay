@@ -83,6 +83,10 @@ async function seed(): Promise<void> {
     where: { code: 'card' },
     select: { id: true },
   });
+  const qr = await prisma.payment_method.findUniqueOrThrow({
+    where: { code: 'qr' },
+    select: { id: true },
+  });
 
   await prisma.provider.upsert({
     where: { code: 'stripe' },
@@ -94,6 +98,20 @@ async function seed(): Promise<void> {
     update: {
       name: 'Stripe',
       payment_method_id: card.id,
+    },
+  });
+
+  await prisma.provider.upsert({
+    where: { code: 'qr_local' },
+    create: {
+      code: 'qr_local',
+      name: 'QR Local',
+      payment_method_id: qr.id,
+    },
+    update: {
+      name: 'QR Local',
+      payment_method_id: qr.id,
+      is_active: true,
     },
   });
 

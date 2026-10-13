@@ -50,6 +50,8 @@ export class GetPaymentUseCase {
         errorCode: payment.error_code ?? null,
         createdAt: payment.created_at.toISOString(),
         updatedAt: payment.updated_at.toISOString(),
+        qrPayload: payment.qr_payload ?? null,
+        expiresAt: payment.expires_at?.toISOString() ?? null,
         statusHistory: payment.payment_status_history.map((history) => ({
           previousStatus: history.previous_status ?? null,
           newStatus: history.new_status,

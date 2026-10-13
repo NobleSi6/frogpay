@@ -11,8 +11,12 @@ import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
+import type { PaymentMethodCapability } from '../../../provider-adapters/ports/payment-provider.port';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
+import { calculatePaymentAmounts } from './payment-amount-calculator';
 
 export interface CreatePaymentExecutionResult {
   isReplay: boolean;
@@ -27,7 +31,10 @@ export class CreatePaymentUseCase {
     private readonly tenantContext: PrismaTenantContextService,
     private readonly idempotency: IdempotencyService,
     @Inject(PaymentProviderRegistry)
-    private readonly paymentProviders: Pick<PaymentProviderRegistry, 'resolve'>,
+    private readonly paymentProviders: Pick<
+      PaymentProviderRegistry,
+      'resolve' | 'capabilityOf'
+    >,
   ) {}
 
   async execute(
@@ -36,6 +43,24 @@ export class CreatePaymentUseCase {
     idempotencyKey: string,
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentExecutionResult> {
+    let capability: PaymentMethodCapability;
+    try {
+      capability = this.paymentProviders.capabilityOf(dto.paymentMethod);
+    } catch (error) {
+      if (error instanceof UnsupportedPaymentMethodError) {
+        throw new ValidationError({
+          field: 'paymentMethod',
+          value: dto.paymentMethod,
+          supportedMethods: error.supportedPaymentMethods,
+        });
+      }
+      throw error;
+    }
+
+    if (capability.requiresPaymentToken && !dto.paymentToken) {
+      throw new ValidationError({ field: 'paymentToken', reason: 'required' });
+    }
+
     const bodyHash = this.idempotency.computeCanonicalBodyHash(dto);
 
     // 1. Reclamar clave de idempotencia atómicamente en Redis
@@ -99,10 +124,7 @@ export class CreatePaymentUseCase {
           // Calcular comisión según el plan
           const commFixed = plan ? Number(plan.commission_fixed) : 0;
           const commPct = plan ? Number(plan.commission_pct) : 0;
-          const calculatedCommission = Number(
-            (requestedAmount * commPct + commFixed).toFixed(2),
-          );
-          const calculatedNet = Number((requestedAmount - calculatedCommission).toFixed(2));
+          const amounts = calculatePaymentAmounts(requestedAmount, commFixed, commPct);
 
           // Obtener método de pago y proveedor
           const paymentMethod = await tx.payment_method.findUnique({
@@ -174,8 +196,8 @@ export class CreatePaymentUseCase {
 
           return {
             paymentId: payment.id,
-            commissionAmount: calculatedCommission.toFixed(2),
-            netAmount: calculatedNet.toFixed(2),
+            commissionAmount: amounts.commissionAmount,
+            netAmount: amounts.netAmount,
           };
         });
 
@@ -184,6 +206,8 @@ export class CreatePaymentUseCase {
         status: PaymentStatus;
         providerTransactionId: string | null;
         errorCode: string | null;
+        qrPayload: string | null;
+        expiresAt: Date | null;
       };
       try {
         const provider = this.paymentProviders.resolve(dto.paymentMethod);
@@ -195,12 +219,16 @@ export class CreatePaymentUseCase {
         });
         providerResult = {
           status:
-            result.outcome === 'approved'
+            result.outcome === 'pending'
+              ? 'pending'
+              : result.outcome === 'approved'
               ? 'approved'
               : result.outcome === 'declined'
                 ? 'rejected'
                 : 'failed',
           providerTransactionId: result.providerTransactionId ?? null,
+          qrPayload: result.qrPayload ?? null,
+          expiresAt: result.expiresAt ?? null,
           errorCode:
             result.errorCode ??
             (result.outcome === 'declined'
@@ -214,12 +242,16 @@ export class CreatePaymentUseCase {
           status: PaymentStatus;
           providerTransactionId: string | null;
           errorCode: string | null;
+          qrPayload: string | null;
+          expiresAt: Date | null;
         };
       } catch (error) {
         this.logger.error(`Error o timeout llamando al proveedor de pago:`, error);
         providerResult = {
           status: 'failed',
           providerTransactionId: null,
+          qrPayload: null,
+          expiresAt: null,
           errorCode: 'provider_timeout',
         };
       }
@@ -239,12 +271,18 @@ export class CreatePaymentUseCase {
           data: {
             status: finalStatus,
             provider_transaction_id: providerResult.providerTransactionId ?? null,
+            qr_payload: providerResult.qrPayload,
+            expires_at: providerResult.expiresAt,
             error_code: providerResult.errorCode ?? null,
             commission_amount: isApproved ? commissionAmount : null,
             net_amount: isApproved ? netAmount : null,
             updated_at: new Date(),
           },
         });
+
+        if (finalStatus === 'pending') {
+          return payment;
+        }
 
         // Historial de cambio de estado
         await tx.payment_status_history.create({
@@ -349,6 +387,12 @@ export class CreatePaymentUseCase {
         errorCode: providerResult.errorCode ?? null,
         createdAt: updatedPayment.created_at.toISOString(),
         updatedAt: updatedPayment.updated_at.toISOString(),
+        ...(finalStatus === 'pending'
+          ? {
+              qrPayload: providerResult.qrPayload,
+              expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+            }
+          : {}),
       };
 
       // 6. Guardar en caché de idempotencia por 24 horas

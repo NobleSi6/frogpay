@@ -1,0 +1,30 @@
+name: API CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/frogpay
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/frogpay
+      - name: Lint API
+        run: npm run lint --workspace apps/api
+      - name: Build API
+        run: npm run build --workspace apps/api
+      - name: Run API unit tests
+        run: npm test --workspace apps/api -- --runInBand --testPathIgnorePatterns=adapters/stripe/stripe-payment-provider.sandbox.spec.ts
