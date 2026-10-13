@@ -1,7 +1,7 @@
 # Estado de tareas: Sprint 3 y transferencia bancaria
 
-**Actualizado:** 2026-10-13  
-**Rama:** `feature/jean-sprint3`  
+**Actualizado:** 2026-10-13
+**Rama:** `feature/jean-sprint3`
 **Alcance:** integración backend, migración, validación y prueba de latencia.
 
 ## Trabajo completado
@@ -64,4 +64,3 @@ Los registros de prueba no se eliminaron.
 
 La clave secreta de Stripe de prueba que se compartió en la conversación debe
 rotarse, pues debe tratarse como expuesta. No se utilizó durante la prueba.
-
