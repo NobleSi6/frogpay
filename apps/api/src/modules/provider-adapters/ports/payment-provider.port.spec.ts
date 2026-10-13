@@ -12,6 +12,7 @@ const PROVIDER_ERROR_CODES: Record<PaymentProviderErrorCode, true> = {
   qr_expired: true,
   transfer_expired: true,
   amount_mismatch: true,
+  currency_mismatch: true,
   reference_not_found: true,
 };
 

@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpStatus,
+} from '@nestjs/common';
 import { DashboardPaymentsController } from './dashboard-payments.controller';
 import type { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import type { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
@@ -12,7 +16,9 @@ describe('DashboardPaymentsController', () => {
   let controller: DashboardPaymentsController;
   let createPaymentUseCase: jest.Mocked<Partial<CreatePaymentUseCase>>;
   let getPaymentUseCase: jest.Mocked<Partial<GetPaymentUseCase>>;
-  let bankReconciliationService: jest.Mocked<Partial<BankReconciliationService>>;
+  let bankReconciliationService: jest.Mocked<
+    Partial<BankReconciliationService>
+  >;
 
   const authContext: AuthenticatedTenantContext = {
     userId: 'user-123',
@@ -114,7 +120,12 @@ describe('DashboardPaymentsController', () => {
 
     it('rejects invalid UUID Idempotency-Key with 400 Bad Request', async () => {
       await expect(
-        controller.createTestPayment(authContext, 'not-a-uuid', validDto, mockResponse),
+        controller.createTestPayment(
+          authContext,
+          'not-a-uuid',
+          validDto,
+          mockResponse,
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -160,11 +171,16 @@ describe('DashboardPaymentsController', () => {
 
   describe('getDetails', () => {
     it('returns payment details and timeline history for tenant in session', async () => {
-      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue(sampleDetailsResponse);
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue(
+        sampleDetailsResponse,
+      );
 
       const result = await controller.getDetails(authContext, validPaymentId);
 
-      expect(getPaymentUseCase.execute).toHaveBeenCalledWith('tenant-456', validPaymentId);
+      expect(getPaymentUseCase.execute).toHaveBeenCalledWith(
+        'tenant-456',
+        validPaymentId,
+      );
       expect(result).toEqual(sampleDetailsResponse);
     });
   });
@@ -174,6 +190,7 @@ describe('DashboardPaymentsController', () => {
       (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
         ...sampleDetailsResponse,
         environment: 'sandbox',
+        paymentMethod: 'bank_transfer',
         providerTransactionId: 'BT-2026-REF1',
         amount: '150.00',
         currency: 'BOB',
@@ -185,9 +202,13 @@ describe('DashboardPaymentsController', () => {
         paymentId: validPaymentId,
       });
 
-      const result = await controller.simulateDeposit(authContext, validPaymentId, {
-        mode: 'exact',
-      });
+      const result = await controller.simulateDeposit(
+        authContext,
+        validPaymentId,
+        {
+          mode: 'exact',
+        },
+      );
 
       expect(result.status).toBe('reconciled');
       expect(bankReconciliationService.reconcile).toHaveBeenCalledWith(
@@ -207,8 +228,25 @@ describe('DashboardPaymentsController', () => {
       });
 
       await expect(
-        controller.simulateDeposit(authContext, validPaymentId, { mode: 'exact' }),
+        controller.simulateDeposit(authContext, validPaymentId, {
+          mode: 'exact',
+        }),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rechaza simular un depósito para un método distinto de transferencia', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'sandbox',
+        paymentMethod: 'card',
+      });
+
+      await expect(
+        controller.simulateDeposit(authContext, validPaymentId, {
+          mode: 'exact',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(bankReconciliationService.reconcile).not.toHaveBeenCalled();
     });
   });
 });

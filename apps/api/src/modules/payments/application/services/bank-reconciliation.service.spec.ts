@@ -34,7 +34,7 @@ describe('BankReconciliationService', () => {
       },
       payment: {
         findFirst: jest.fn(),
-        update: jest.fn((args) => Promise.resolve({ id: 'pay-uuid-1', ...args.data })),
+        updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
       },
       payment_status_history: {
         create: jest.fn(() => Promise.resolve({})),
@@ -61,6 +61,8 @@ describe('BankReconciliationService', () => {
       mockPrisma.payment.findFirst.mockResolvedValue({
         id: 'pay-uuid-1',
         tenant_id: tenantId,
+        provider_id: 'provider-bank',
+        payment_method_id: 'method-bank',
         provider_transaction_id: reference,
         status: 'pending',
         amount: '150.00',
@@ -84,14 +86,33 @@ describe('BankReconciliationService', () => {
       expect(result.paymentId).toBe('pay-uuid-1');
 
       // 1. Pago actualizado a approved
-      expect(mockPrisma.payment.update).toHaveBeenCalledWith(
+      expect(mockPrisma.payment.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id_tenant_id: { id: 'pay-uuid-1', tenant_id: tenantId } },
+          where: {
+            id: 'pay-uuid-1',
+            tenant_id: tenantId,
+            provider_id: 'provider-bank',
+            payment_method_id: 'method-bank',
+            status: 'pending',
+            environment: 'sandbox',
+          },
           data: expect.objectContaining({
             status: 'approved',
             commission_amount: '5.75', // 150 * 0.035 + 0.50 = 5.25 + 0.50 = 5.75
             net_amount: '144.25',
             error_code: null,
+          }),
+        }),
+      );
+      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            environment: 'sandbox',
+            provider: {
+              is: {
+                payment_method: { is: { code: 'bank_transfer' } },
+              },
+            },
           }),
         }),
       );
@@ -154,6 +175,8 @@ describe('BankReconciliationService', () => {
       mockPrisma.payment.findFirst.mockResolvedValue({
         id: 'pay-uuid-1',
         tenant_id: tenantId,
+        provider_id: 'provider-bank',
+        payment_method_id: 'method-bank',
         provider_transaction_id: reference,
         status: 'pending',
         amount: '150.00',
@@ -178,7 +201,7 @@ describe('BankReconciliationService', () => {
       expect(result.errorCode).toBe('amount_mismatch');
 
       // 1. Pago rechazado
-      expect(mockPrisma.payment.update).toHaveBeenCalledWith(
+      expect(mockPrisma.payment.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
             status: 'rejected',
@@ -230,7 +253,7 @@ describe('BankReconciliationService', () => {
       expect(result.errorCode).toBe('reference_not_found');
       expect(result.paymentId).toBeUndefined();
 
-      expect(mockPrisma.payment.update).not.toHaveBeenCalled();
+      expect(mockPrisma.payment.updateMany).not.toHaveBeenCalled();
       expect(mockPrisma.domain_event_outbox.create).not.toHaveBeenCalled();
       expect(mockPrisma.bank_transaction.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -245,10 +268,12 @@ describe('BankReconciliationService', () => {
   });
 
   describe('Transición Inválida (invalid_state_transition)', () => {
-    it('debe lanzar UnprocessableEntityException si el pago ya no está en pending', async () => {
+    it('registra el depósito y devuelve 422 si el pago ya no está en pending', async () => {
       mockPrisma.payment.findFirst.mockResolvedValue({
         id: 'pay-uuid-1',
         tenant_id: tenantId,
+        provider_id: 'provider-bank',
+        payment_method_id: 'method-bank',
         provider_transaction_id: reference,
         status: 'approved', // Ya aprobado
         amount: '150.00',
@@ -275,6 +300,48 @@ describe('BankReconciliationService', () => {
         }),
       );
     });
+
+    it('registra el depósito antes de devolver 422 si otra conciliación ganó la carrera', async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        id: 'pay-uuid-1',
+        tenant_id: tenantId,
+        provider_id: 'provider-bank',
+        payment_method_id: 'method-bank',
+        provider_transaction_id: reference,
+        status: 'pending',
+        amount: '150.00',
+        currency: 'BOB',
+        environment: 'sandbox',
+        merchant_reference: 'ORDEN-1001',
+        tenant: mockTenant,
+      });
+      mockPrisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.reconcile({
+          tenantId,
+          depositId: 'DEP-RACE-2',
+          reference,
+          amount: '150.00',
+          currency: 'BOB',
+          bankName: 'Banco Nacional',
+        }),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(mockPrisma.bank_transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            external_id: 'DEP-RACE-2',
+            status: 'unmatched',
+            metadata: expect.objectContaining({
+              reason: 'invalid_state_transition',
+            }),
+          }),
+        }),
+      );
+      expect(mockPrisma.tenant_plan_usage.upsert).not.toHaveBeenCalled();
+      expect(mockPrisma.domain_event_outbox.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('Idempotencia de Depósito', () => {
@@ -285,6 +352,9 @@ describe('BankReconciliationService', () => {
         external_id: 'DEP-IDEMPOTENT-1',
         status: 'reconciled',
         payment_id: 'pay-uuid-1',
+        reference,
+        amount: '150.00',
+        currency: 'BOB',
       });
 
       const result = await service.reconcile({
@@ -304,6 +374,105 @@ describe('BankReconciliationService', () => {
       expect(mockPrisma.payment.findFirst).not.toHaveBeenCalled();
       expect(mockPrisma.bank_transaction.create).not.toHaveBeenCalled();
       expect(mockPrisma.domain_event_outbox.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza reutilizar el depositId con datos diferentes', async () => {
+      mockPrisma.bank_transaction.findFirst.mockResolvedValue({
+        id: 'bt-existing-id',
+        tenant_id: tenantId,
+        external_id: 'DEP-IDEMPOTENT-1',
+        status: 'reconciled',
+        payment_id: 'pay-uuid-1',
+        reference,
+        amount: '150.00',
+        currency: 'BOB',
+      });
+
+      await expect(
+        service.reconcile({
+          tenantId,
+          depositId: 'DEP-IDEMPOTENT-1',
+          reference: 'BT-OTHER-REF',
+          amount: '150.00',
+          currency: 'BOB',
+          bankName: 'Banco Ganadero',
+        }),
+      ).rejects.toThrow(
+        'El identificador del depósito ya fue utilizado con otros datos.',
+      );
+      expect(mockPrisma.payment.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Validación del depósito', () => {
+    it('solo busca pagos sandbox por transferencia bancaria', async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue(null);
+
+      await service.reconcile({
+        tenantId,
+        reference,
+        amount: '150.00',
+        currency: 'BOB',
+        bankName: 'Banco de Prueba',
+      });
+
+      expect(mockPrisma.payment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            environment: 'sandbox',
+            provider: {
+              is: {
+                payment_method: { is: { code: 'bank_transfer' } },
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('registra moneda discrepante sin aprobar ni rechazar el pago', async () => {
+      mockPrisma.payment.findFirst.mockResolvedValue({
+        id: 'pay-uuid-1',
+        tenant_id: tenantId,
+        provider_id: 'provider-bank',
+        payment_method_id: 'method-bank',
+        provider_transaction_id: reference,
+        status: 'pending',
+        amount: '150.00',
+        currency: 'USD',
+        environment: 'sandbox',
+        merchant_reference: 'ORDEN-1001',
+        tenant: mockTenant,
+      });
+
+      const result = await service.reconcile({
+        tenantId,
+        depositId: 'DEP-CURRENCY-1',
+        reference,
+        amount: '150.00',
+        currency: 'BOB',
+        bankName: 'Banco de Prueba',
+      });
+
+      expect(result).toEqual({
+        status: 'currency_mismatch',
+        depositId: 'bt-uuid-1',
+        paymentId: 'pay-uuid-1',
+        errorCode: 'currency_mismatch',
+      });
+      expect(mockPrisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.domain_event_outbox.create).not.toHaveBeenCalled();
+      expect(mockPrisma.bank_transaction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'currency_mismatch',
+            metadata: expect.objectContaining({
+              expectedCurrency: 'USD',
+              receivedCurrency: 'BOB',
+            }),
+          }),
+        }),
+      );
     });
   });
 });

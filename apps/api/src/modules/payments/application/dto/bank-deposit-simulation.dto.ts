@@ -17,13 +17,15 @@ export class BankDepositSimulationDto {
   reference!: string;
 
   @ApiProperty({
-    description: 'Monto del depósito como string decimal mayor a 0 (ej. "150.00")',
+    description:
+      'Monto del depósito como string decimal mayor a 0 (ej. "150.00")',
     example: '150.00',
   })
   @IsString({ message: 'amount debe ser un string decimal.' })
   @IsNotEmpty({ message: 'amount es obligatorio.' })
   @Matches(/^(?!0+(?:\.0+)?$)\d+(\.\d{1,2})?$/, {
-    message: 'amount debe ser un número decimal mayor a cero con hasta 2 decimales.',
+    message:
+      'amount debe ser un número decimal mayor a cero con hasta 2 decimales.',
   })
   amount!: string;
 
@@ -33,6 +35,7 @@ export class BankDepositSimulationDto {
   })
   @IsString({ message: 'currency debe ser una cadena.' })
   @IsNotEmpty({ message: 'currency es obligatorio.' })
+  @IsIn(['BOB'], { message: 'currency debe ser BOB.' })
   currency!: string;
 
   @ApiProperty({
@@ -72,9 +75,9 @@ export class DashboardSimulateDepositDto {
 export class BankDepositSimulationResponseDto {
   @ApiProperty({
     example: 'reconciled',
-    enum: ['reconciled', 'amount_mismatch', 'unmatched'],
+    enum: ['reconciled', 'amount_mismatch', 'currency_mismatch', 'unmatched'],
   })
-  status!: 'reconciled' | 'amount_mismatch' | 'unmatched';
+  status!: 'reconciled' | 'amount_mismatch' | 'currency_mismatch' | 'unmatched';
 
   @ApiProperty({ example: '8a2d8a64-d1ea-4f73-b9fe-64c507ed7391' })
   depositId!: string;

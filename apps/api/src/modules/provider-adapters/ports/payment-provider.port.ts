@@ -71,6 +71,7 @@ export type PaymentProviderErrorCode =
   | 'qr_expired'
   | 'transfer_expired'
   | 'amount_mismatch'
+  | 'currency_mismatch'
   | 'reference_not_found';
 
 export interface ProviderResult {

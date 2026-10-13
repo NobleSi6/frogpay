@@ -7,8 +7,8 @@
 
 ## 1. Creación de pago
 
-**Endpoint:** `POST /v1/payments`  
-**Autenticación:** API Key del tenant mediante cabecera `X-Api-Key`.  
+**Endpoint:** `POST /v1/payments`<br>
+**Autenticación:** API Key del tenant mediante cabecera `X-Api-Key`.
 **Cabecera obligatoria:** `Idempotency-Key: <UUID>`
 
 La clave de idempotencia garantiza que reintentos de una misma solicitud no creen pagos duplicados.
@@ -63,7 +63,7 @@ El método `bank_transfer` no requiere token de tarjeta ni credenciales bancaria
 
 ## 2. Consulta del estado del pago
 
-**Endpoint:** `GET /v1/payments/:id`  
+**Endpoint:** `GET /v1/payments/:id`
 **Autenticación:** API Key del tenant (`X-Api-Key`).
 
 Devuelve el estado actual, las instrucciones bancarias (si aplica), la referencia y el historial de transiciones.
@@ -78,9 +78,10 @@ Devuelve el estado actual, las instrucciones bancarias (si aplica), la referenci
 
 ## 3. Simulador de depósito bancario (Ambiente Sandbox)
 
-**Endpoint:** `POST /v1/test/simulators/bank-deposit`  
-**Disponibilidad:** Solamente en ambiente `sandbox`. En `production` responde `403 Forbidden`.  
+**Endpoint:** `POST /v1/test/simulators/bank-deposit`<br>
+**Disponibilidad:** Solamente en ambiente `sandbox`. En `production` responde `403 Forbidden`.
 **Autenticación:** API Key del tenant (`X-Api-Key`).
+**Respuesta de conciliación:** `200 OK`.
 
 ### Cuerpo de la solicitud
 ```json
@@ -109,24 +110,31 @@ Devuelve el estado actual, las instrucciones bancarias (si aplica), la referenci
    - Se registra en `payment_status_history`.
    - Se publica el evento `pago.rechazado` en Outbox.
 
-3. **La referencia no existe:**
+3. **La moneda del depósito no coincide con la del pago:**
+   - El pago permanece `pending`; no se aprueba ni se rechaza.
+   - El depósito se registra como `currency_mismatch` para revisión.
+   - Devuelve código `currency_mismatch`.
+
+4. **La referencia no existe o no corresponde a un pago sandbox por transferencia:**
    - El depósito se registra en `bank_transaction` como `unmatched`.
    - No se modifica ningún pago existente.
    - Devuelve código `reference_not_found`.
 
-4. **El depósito ya fue procesado:**
-   - Idempotente por `depositId`. No se duplican transiciones ni eventos.
+5. **El depósito ya fue procesado:**
+   - Idempotente por `(tenantId, depositId)`. No se duplican transiciones ni eventos.
+   - Reutilizar el identificador con otros datos responde `409 Conflict`.
 
-5. **El pago ya no está en `pending`:**
-   - Se rechaza la operación con `422 Unprocessable Entity` y código `invalid_state_transition`.
+6. **El pago ya no está en `pending`, o cambió de estado durante la conciliación:**
+   - El depósito se registra como `unmatched` y la operación responde
+     `422 Unprocessable Entity` con código `invalid_state_transition`.
 
 ---
 
 ## 4. Endpoints del Dashboard BFF
 
 ### A. Simular depósito desde el Dashboard
-**Endpoint:** `POST /dashboard/payments/:id/simulate-deposit`  
-**Autenticación:** Sesión JWT con rol `OWNER` o `ADMIN`.  
+**Endpoint:** `POST /dashboard/payments/:id/simulate-deposit`<br>
+**Autenticación:** Sesión JWT con rol `OWNER` o `ADMIN`.
 **Disponibilidad:** Solo en ambiente `sandbox`.
 
 ```json
@@ -135,11 +143,16 @@ Devuelve el estado actual, las instrucciones bancarias (si aplica), la referenci
 }
 ```
 *Valores permitidos para `mode`:* `exact`, `amount_mismatch`, `reference_not_found`.
+La simulación solo admite pagos sandbox cuyo método sea `bank_transfer`.
+La API de depósitos valida `currency: "BOB"`; monedas no soportadas se rechazan
+con `400` antes de conciliar.
 
 ### B. Consulta de depósitos bancarios
-**Endpoint:** `GET /dashboard/bank-transactions`  
-**Autenticación:** Sesión JWT con rol `OWNER` o `ADMIN`.  
-**Filtros (Query params):** `page`, `limit`, `status` (`reconciled`, `amount_mismatch`, `unmatched`), `from`, `to`.
+**Endpoint:** `GET /dashboard/bank-transactions`<br>
+**Autenticación:** Sesión JWT con rol `OWNER` o `ADMIN`.
+**Filtros (Query params):** `page`, `limit`, `status` (`reconciled`,
+`amount_mismatch`, `currency_mismatch`, `unmatched`, `reference_not_found`),
+`from`, `to`.
 
 ---
 

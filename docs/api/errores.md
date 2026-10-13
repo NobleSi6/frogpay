@@ -61,7 +61,9 @@ Van en `payment.errorCode` cuando `payment.status` es `rejected` o
 | `qr_expired` | `rejected` | El pago QR venció sin recibir confirmación del cliente dentro del plazo (`QR_EXPIRATION_MINUTES`). |
 | `transfer_expired` | `rejected` | El pago por transferencia bancaria venció sin recibir depósito válido (`BANK_TRANSFER_EXPIRATION_HOURS`). |
 | `amount_mismatch` | `rejected` | El depósito recibido tiene la referencia correcta pero el monto no coincide con el pago esperado. El depósito queda registrado para revisión. |
+| `currency_mismatch` | N/A (Depósito) | La referencia corresponde a un pago pendiente, pero la moneda recibida no coincide. El pago permanece pendiente y el depósito queda registrado para revisión. |
 | `reference_not_found` | N/A (Depósito) | No existe un pago pendiente con la referencia del depósito. El depósito se registra como no conciliado (`unmatched`) y ningún pago cambia de estado. |
+| `deposit_id_reused` | N/A (Depósito) | Se reutilizó el mismo `depositId` con otra referencia, monto o moneda; la conciliación no se vuelve a procesar. Respuesta HTTP `409 Conflict`. |
 
 El adapter asigna `provider_timeout` a los timeouts y
 `provider_unavailable` a los errores de infraestructura. Los estados de

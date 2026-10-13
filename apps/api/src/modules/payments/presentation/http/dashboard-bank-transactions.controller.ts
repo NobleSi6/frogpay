@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -44,10 +39,22 @@ export class GetBankTransactionsQueryDto {
 
   @ApiProperty({
     required: false,
-    enum: ['reconciled', 'amount_mismatch', 'unmatched', 'reference_not_found'],
+    enum: [
+      'reconciled',
+      'amount_mismatch',
+      'currency_mismatch',
+      'unmatched',
+      'reference_not_found',
+    ],
   })
   @IsOptional()
-  @IsIn(['reconciled', 'amount_mismatch', 'unmatched', 'reference_not_found'])
+  @IsIn([
+    'reconciled',
+    'amount_mismatch',
+    'currency_mismatch',
+    'unmatched',
+    'reference_not_found',
+  ])
   status?: string;
 
   @ApiProperty({ required: false, description: 'Fecha inicial (ISO 8601)' })
@@ -80,7 +87,10 @@ export class BankTransactionItemDto {
   @ApiProperty({ example: '2026-10-11T20:05:00.000Z' })
   receivedAt!: string;
 
-  @ApiProperty({ example: 'reconciled' })
+  @ApiProperty({
+    example: 'reconciled',
+    enum: ['reconciled', 'amount_mismatch', 'currency_mismatch', 'unmatched'],
+  })
   status!: string;
 
   @ApiProperty({
@@ -123,7 +133,8 @@ export class DashboardBankTransactionsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Listar depósitos y transacciones bancarias para conciliación (TSK-BANK-304)',
+    summary:
+      'Listar depósitos y transacciones bancarias para conciliación (TSK-BANK-304)',
     description:
       'Devuelve los depósitos bancarios registrados para el tenant autenticado, con paginación y filtros por estado y fecha.',
   })

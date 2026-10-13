@@ -52,7 +52,8 @@ export class DashboardPaymentsController {
 
   @Post('test')
   @ApiOperation({
-    summary: 'Crear un pago de prueba en sandbox desde el Dashboard (TSK-DEV3-203)',
+    summary:
+      'Crear un pago de prueba en sandbox desde el Dashboard (TSK-DEV3-203)',
     description:
       'Autenticado con la sesión JWT del Owner/Admin. Fuerza el ambiente sandbox y reutiliza el caso de uso común de creación de pago.',
   })
@@ -85,7 +86,8 @@ export class DashboardPaymentsController {
     if (!idempotencyKey || !isUUID(idempotencyKey)) {
       throw new BadRequestException({
         code: 'validation_error',
-        message: 'El encabezado Idempotency-Key es obligatorio y debe ser un UUID válido.',
+        message:
+          'El encabezado Idempotency-Key es obligatorio y debe ser un UUID válido.',
       });
     }
 
@@ -103,7 +105,8 @@ export class DashboardPaymentsController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Consultar el detalle completo e historial de un pago (RF-10, TSK-DEV3-203)',
+    summary:
+      'Consultar el detalle completo e historial de un pago (RF-10, TSK-DEV3-203)',
     description:
       'Devuelve el detalle del pago junto con su línea de tiempo e historial de estados para las pantallas del Dashboard.',
   })
@@ -135,7 +138,8 @@ export class DashboardPaymentsController {
   @Post(':id/simulate-deposit')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Simular depósito bancario para un pago desde el Dashboard (TSK-BANK-303)',
+    summary:
+      'Simular depósito bancario para un pago desde el Dashboard (TSK-BANK-303)',
     description:
       'Autenticado con JWT de Owner/Admin en ambiente sandbox. Permite probar flujos de conciliación directa desde la interfaz.',
   })
@@ -165,6 +169,11 @@ export class DashboardPaymentsController {
     description: 'Transición de estado inválida.',
     type: PaymentErrorResponseDto,
   })
+  @ApiResponse({
+    status: 409,
+    description: 'El identificador del depósito ya se usó con datos diferentes.',
+    type: PaymentErrorResponseDto,
+  })
   async simulateDeposit(
     @CurrentTenantContext() context: AuthenticatedTenantContext,
     @Param('id') paymentId: string,
@@ -177,12 +186,23 @@ export class DashboardPaymentsController {
       });
     }
 
-    const payment = await this.getPaymentUseCase.execute(context.tenantId, paymentId);
+    const payment = await this.getPaymentUseCase.execute(
+      context.tenantId,
+      paymentId,
+    );
 
     if (payment.environment !== 'sandbox') {
       throw new ForbiddenException({
         code: 'forbidden_in_production',
         message: 'La simulación solo está disponible en ambiente sandbox.',
+      });
+    }
+
+    if (payment.paymentMethod !== 'bank_transfer') {
+      throw new BadRequestException({
+        code: 'validation_error',
+        message:
+          'La simulación de depósito solo admite pagos por transferencia bancaria.',
       });
     }
 

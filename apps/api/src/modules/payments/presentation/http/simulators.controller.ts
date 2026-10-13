@@ -2,16 +2,13 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  HttpCode,
+  HttpStatus,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiHeader,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ApiKeyAuthGuard } from '../guards/api-key-auth.guard';
 import type { ApiKeyContext } from '../guards/api-key-auth.guard';
@@ -35,9 +32,11 @@ export class SimulatorsController {
   ) {}
 
   @Post('bank-deposit')
+  @HttpCode(HttpStatus.OK)
   @UseGuards(ApiKeyAuthGuard)
   @ApiOperation({
-    summary: 'Simular depósito bancario para conciliación automática (TSK-BANK-303)',
+    summary:
+      'Simular depósito bancario para conciliación automática (TSK-BANK-303)',
     description:
       'Disponible exclusivamente en ambiente sandbox. Procesa el depósito recibido y concilia el pago asociado por referencia y monto exacto.',
   })
@@ -64,6 +63,11 @@ export class SimulatorsController {
   @ApiResponse({
     status: 422,
     description: 'Transición de estado inválida.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El identificador del depósito ya se usó con datos diferentes.',
     type: PaymentErrorResponseDto,
   })
   async simulateBankDeposit(

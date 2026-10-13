@@ -10,6 +10,7 @@
 |---|---|---|
 | Integración de `feature/axl-sprint3` | Completada | Integrada en `feature/jean-sprint3` mediante el commit `cb0b443`. |
 | Migración `20261011000000_bank_transfer_reconciliation` | Aplicada en sandbox | Se confirmó la disponibilidad de `bank_transaction` y del flujo de conciliación. No usar esta confirmación como autorización para migrar producción. |
+| Migración `20261013000000_harden_bank_reconciliation` | Pendiente de aplicar | Añade el estado `currency_mismatch` y unicidad por `(tenant_id, external_id)`. Incluye una comprobación previa; si ya existen depósitos duplicados, la migración se detiene para evitar borrar registros automáticamente. |
 | TSK-ARQ-307: contrato API, simulador y catálogo de errores | Completada | Se encuentran implementados el contrato y los códigos de error relacionados. |
 | TSK-BANK-301: adapter local de transferencia | Completada | Genera instrucciones bancarias y una referencia para el pago. |
 | TSK-BANK-302: conciliación bancaria | Completada | Maneja coincidencia exacta, discrepancia de monto, referencia inexistente y transición de estado inválida. |
@@ -61,6 +62,11 @@ La prueba k6 usa el tenant sandbox creado para la ejecución y dejó cuatro
 pagos y cuatro transacciones de prueba en Supabase sandbox. Las llaves
 temporales quedaron revocadas; no había llaves temporales activas al verificar.
 Los registros de prueba no se eliminaron.
+
+La migración `20261013000000_harden_bank_reconciliation` está incluida en la
+rama pero no se aplicó a Supabase. Aplicarla después de revisar duplicados de
+`(tenant_id, external_id)` en el entorno destino y antes de desplegar el código
+que usa `currency_mismatch`.
 
 La clave secreta de Stripe de prueba que se compartió en la conversación debe
 rotarse, pues debe tratarse como expuesta. No se utilizó durante la prueba.

@@ -347,4 +347,5 @@ model bank_transaction {
   @@index([reference], map: "idx_bt_reference")
   @@index([payment_id], map: "idx_bt_payment")
   @@index([external_id], map: "idx_bt_external_id")
+  @@unique([tenant_id, external_id], map: "uq_bt_tenant_external_id")
 }

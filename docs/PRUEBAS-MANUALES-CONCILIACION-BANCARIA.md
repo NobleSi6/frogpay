@@ -117,8 +117,8 @@ Headers: `X-Api-Key` con la API key `test` del tenant.
 }
 ```
 
-Resultado esperado para coincidencia exacta: `201 Created` (código POST
-predeterminado del endpoint) con `status: "reconciled"` y `paymentId`. Si
+Resultado esperado para coincidencia exacta: `200 OK` con estado
+`reconciled` y `paymentId`. Si
 repites la llamada con el mismo `depositId`, debe devolverse el resultado
 registrado sin crear una segunda transacción ni duplicar la conciliación. El
 endpoint está limitado a API keys de sandbox; con una llave de producción debe
@@ -132,8 +132,14 @@ responder `403 Forbidden`.
 - `404`: pago inexistente o que no pertenece al tenant autenticado.
 - `422 invalid_state_transition`: se intenta conciliar una referencia cuyo
   pago ya no está `pending`.
-- Las pruebas con `amount_mismatch` y `reference_not_found` crean registros
-  persistentes. Usa identificadores únicos y una base aislada.
+- Si se repite `depositId` con otra referencia, monto o moneda, espera
+  `409 Conflict` con `deposit_id_reused`.
+- El simulador solo acepta `currency: "BOB"` actualmente. Por eso el caso
+  `currency_mismatch` se cubre con pruebas automatizadas para pagos históricos
+  o monedas adicionales; no se puede generar mediante el flujo HTTP vigente.
+- Las pruebas con `amount_mismatch`, `currency_mismatch` y
+  `reference_not_found` crean registros persistentes. Usa identificadores
+  únicos y una base aislada.
 - No borres datos directamente de la base compartida como parte de la prueba.
 
 ## Limpieza y evidencia
