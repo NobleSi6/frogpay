@@ -1,5 +1,8 @@
 import type * as Stripe from 'stripe';
-import { ProviderResult } from '../../ports/payment-provider.port';
+import {
+  PaymentProviderErrorCode,
+  ProviderResult,
+} from '../../ports/payment-provider.port';
 import { ERROR_CATALOG } from '../../../../shared/http/errors/error-catalog';
 
 /** Catálogo cerrado compartido por errores HTTP y resultados de pago. */
@@ -15,6 +18,7 @@ export const AdapterErrorCode = {
   PROCESSING_ERROR: ERROR_CATALOG.processing_error.code,
   PROVIDER_TIMEOUT: ERROR_CATALOG.provider_timeout.code,
   PROVIDER_UNAVAILABLE: ERROR_CATALOG.provider_unavailable.code,
+  QR_EXPIRED: ERROR_CATALOG.qr_expired.code,
 } as const;
 
 /**
@@ -55,7 +59,7 @@ export function mapPaymentIntentToResult(intent: Stripe.PaymentIntent): Provider
   }
 }
 
-export function toCatalogDeclineErrorCode(code: string | undefined): string {
+export function toCatalogDeclineErrorCode(code: string | undefined): PaymentProviderErrorCode {
   switch (code) {
     case ERROR_CATALOG.insufficient_funds.code:
     case ERROR_CATALOG.expired_card.code:

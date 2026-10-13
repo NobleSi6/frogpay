@@ -119,6 +119,8 @@ model payment {
   environment                   String                      @default("sandbox")
   tenant_provider_credential_id String?                     @db.Uuid
   provider_transaction_id       String?
+  qr_payload                    String?
+  expires_at                    DateTime?                    @db.Timestamptz(6)
   merchant_reference            String?
   error_code                    String?
   commission_amount             Decimal?                    @db.Decimal(14, 2)
