@@ -417,8 +417,8 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     console.log(
       `QR_IDEMPOTENCY_MISMATCH=${JSON.stringify({ status: mismatchedBody.status, body: mismatchedBody.body })}`,
     );
-    expect(mismatchedBody.status).toBe(500);
-    expect(mismatchedBody.body.code).toBe('internal_error');
+    expect(mismatchedBody.status).toBe(422);
+    expect(mismatchedBody.body.code).toBe('idempotency_key_reused');
 
     const settlement = testApp.get(PaymentSettlementService);
     await expect(settlement.approve(qrPaymentId)).resolves.toMatchObject({
@@ -613,9 +613,9 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     const unauthenticatedDashboard = await http
       .post(`/api/dashboard/payments/${dashboardApprovedId}/simulate`)
       .send({ result: 'APPROVED' });
-    expect(unauthenticatedDashboard.status).toBe(500);
-    expect(unauthenticatedDashboard.body.code).toBe('internal_error');
-    await simulateDashboard(dashboardApprovedId, testFixture.adminJwt, 'APPROVED').expect(500);
+    expect(unauthenticatedDashboard.status).toBe(401);
+    expect(unauthenticatedDashboard.body.code).toBe('unauthorized');
+    await simulateDashboard(dashboardApprovedId, testFixture.adminJwt, 'APPROVED').expect(403);
     const dashboardResult = await simulateDashboard(
       dashboardApprovedId,
       testFixture.jwt,
@@ -658,8 +658,8 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
     const callbackWithoutKey = await http
       .post('/api/v1/test/simulators/qr-callback')
       .send({ payment_id: callbackPaymentId, result: 'APPROVED' });
-    expect(callbackWithoutKey.status).toBe(500);
-    expect(callbackWithoutKey.body.code).toBe('internal_error');
+    expect(callbackWithoutKey.status).toBe(401);
+    expect(callbackWithoutKey.body.code).toBe('missing_api_key');
 
     const callbackFirst = await simulateCallback(
       callbackPaymentId,
@@ -707,15 +707,15 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       testFixture.jwt,
       'APPROVED',
     );
-    expect(foreignDashboard.status).toBe(500);
-    expect(foreignDashboard.body.code).toBe('internal_error');
+    expect(foreignDashboard.status).toBe(404);
+    expect(foreignDashboard.body.code).toBe('payment_not_found');
     const foreignCallback = await simulateCallback(
       foreignPaymentId,
       testFixture.apiKey,
       'APPROVED',
     );
-    expect(foreignCallback.status).toBe(500);
-    expect(foreignCallback.body.code).toBe('internal_error');
+    expect(foreignCallback.status).toBe(404);
+    expect(foreignCallback.body.code).toBe('payment_not_found');
 
     const productionPaymentId = await createQrFixturePayment(
       sqlPrisma,
@@ -727,13 +727,15 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       testFixture.jwt,
       'APPROVED',
     );
-    expect(productionDashboard.status).toBe(500);
+    expect(productionDashboard.status).toBe(403);
+    expect(productionDashboard.body.code).toBe('simulation_not_allowed');
     const productionCallback = await simulateCallback(
       productionPaymentId,
       testFixture.productionApiKey,
       'APPROVED',
     );
-    expect(productionCallback.status).toBe(500);
+    expect(productionCallback.status).toBe(403);
+    expect(productionCallback.body.code).toBe('simulation_not_allowed');
     expect(
       (await sqlPrisma.payment.findUniqueOrThrow({ where: { id: productionPaymentId } }))
         .status,
@@ -853,6 +855,176 @@ describe('QR payment integration (NestJS + local PostgreSQL)', () => {
       }),
     ).toEqual(cardUpdatedAt);
     config.set('qrAutoConfirmEnabled', false);
+  });
+
+  it('verifies HTTP contract after transversal filter and API-key guard fixes', async () => {
+    const testApp = app;
+    const testFixture = fixture;
+    const prisma = adminPrisma;
+    if (!testApp || !testFixture || !prisma) {
+      throw new Error('La aplicación o el fixture no se inicializó.');
+    }
+
+    const http = request(testApp.getHttpServer());
+    const basePaymentBody = {
+      amount: '31.00',
+      currency: 'BOB',
+      paymentMethod: 'qr',
+      merchantReference: 'http-before-after-contract',
+    };
+    const postPayment = (options: {
+      apiKey?: string;
+      jwt?: string;
+      key?: string;
+      body?: Record<string, string>;
+    }) => {
+      let req = http.post('/api/v1/payments');
+      if (options.apiKey) req = req.set('X-Api-Key', options.apiKey);
+      if (options.jwt) req = req.auth(options.jwt, { type: 'bearer' });
+      if (options.key) req = req.set('Idempotency-Key', options.key);
+      return req.send(options.body ?? basePaymentBody);
+    };
+    const record = (name: string, response: { status: number; body: Record<string, unknown> }) => ({
+      name,
+      status: response.status,
+      code: response.body.code ?? null,
+    });
+    const uniqueKey = () => randomUUID();
+    const onlyApiKey = await postPayment({
+      apiKey: testFixture.apiKey,
+      key: uniqueKey(),
+    });
+    const noCredentials = await postPayment({ key: uniqueKey() });
+    const jwtWithoutApiKey = await postPayment({
+      jwt: testFixture.jwt,
+      key: uniqueKey(),
+    });
+    const invalidApiKey = await postPayment({
+      apiKey: 'fp_test_invalid.invalid-secret',
+      key: uniqueKey(),
+    });
+
+    const reusedKey = uniqueKey();
+    await postPayment({
+      apiKey: testFixture.apiKey,
+      jwt: testFixture.jwt,
+      key: reusedKey,
+    });
+    const reusedBody = await postPayment({
+      apiKey: testFixture.apiKey,
+      jwt: testFixture.jwt,
+      key: reusedKey,
+      body: { ...basePaymentBody, amount: '32.00' },
+    });
+
+    const processingKey = uniqueKey();
+    const idempotency = testApp.get(IdempotencyService);
+    const bodyHash = idempotency.computeCanonicalBodyHash(basePaymentBody);
+    await idempotency.acquireLock(
+      testFixture.tenantId,
+      'sandbox',
+      processingKey,
+      bodyHash,
+    );
+    const inProgress = await postPayment({
+      apiKey: testFixture.apiKey,
+      jwt: testFixture.jwt,
+      key: processingKey,
+    });
+
+    const foreignPaymentId = await createQrFixturePayment(
+      prisma,
+      testFixture.foreignTenantId,
+    );
+    const productionPaymentId = await createQrFixturePayment(
+      prisma,
+      testFixture.tenantId,
+      { environment: 'production' },
+    );
+    const dashboardNoJwt = await http
+      .post(`/api/dashboard/payments/${productionPaymentId}/simulate`)
+      .send({ result: 'APPROVED' });
+    const dashboardAdmin = await http
+      .post(`/api/dashboard/payments/${foreignPaymentId}/simulate`)
+      .auth(testFixture.adminJwt, { type: 'bearer' })
+      .send({ result: 'APPROVED' });
+    const dashboardForeign = await http
+      .post(`/api/dashboard/payments/${foreignPaymentId}/simulate`)
+      .auth(testFixture.jwt, { type: 'bearer' })
+      .send({ result: 'APPROVED' });
+    const dashboardProduction = await http
+      .post(`/api/dashboard/payments/${productionPaymentId}/simulate`)
+      .auth(testFixture.jwt, { type: 'bearer' })
+      .send({ result: 'APPROVED' });
+    const callbackNoKey = await http
+      .post('/api/v1/test/simulators/qr-callback')
+      .send({ payment_id: productionPaymentId, result: 'APPROVED' });
+    const callbackValidKey = await http
+      .post('/api/v1/test/simulators/qr-callback')
+      .set('X-Api-Key', testFixture.apiKey)
+      .send({ payment_id: foreignPaymentId, result: 'APPROVED' });
+    const callbackProduction = await http
+      .post('/api/v1/test/simulators/qr-callback')
+      .set('X-Api-Key', testFixture.productionApiKey)
+      .send({ payment_id: productionPaymentId, result: 'APPROVED' });
+    const missingPayment = await http
+      .get(`/api/dashboard/payments/${uniqueKey()}`)
+      .auth(testFixture.jwt, { type: 'bearer' });
+    const dashboardPaymentNoJwt = await http
+      .get(`/api/dashboard/payments/${String(onlyApiKey.body.id)}`);
+    const dashboardPaymentMethodsNoJwt = await http.get('/api/dashboard/payment-methods');
+
+    const httpContract = [
+      record('payments_only_api_key', onlyApiKey),
+      record('payments_no_credentials', noCredentials),
+      record('payments_jwt_without_api_key', jwtWithoutApiKey),
+      record('payments_invalid_api_key', invalidApiKey),
+      record('idempotency_body_reused', reusedBody),
+      record('idempotency_in_progress', inProgress),
+      record('dashboard_simulate_no_jwt', dashboardNoJwt),
+      record('dashboard_simulate_admin', dashboardAdmin),
+      record('dashboard_simulate_foreign', dashboardForeign),
+      record('dashboard_simulate_production', dashboardProduction),
+      record('qr_callback_no_api_key', callbackNoKey),
+      record('qr_callback_valid_api_key_foreign_payment', callbackValidKey),
+      record('qr_callback_production_payment', callbackProduction),
+      record('dashboard_get_missing_payment', missingPayment),
+      record('dashboard_get_payment_no_jwt', dashboardPaymentNoJwt),
+      record('dashboard_get_payment_methods_no_jwt', dashboardPaymentMethodsNoJwt),
+    ];
+    console.log(`HTTP_CONTRACT_AFTER=${JSON.stringify(httpContract)}`);
+    console.log(`HTTP_JSON_EVIDENCE=${JSON.stringify({
+      dashboardPaymentNoJwt: {
+        status: dashboardPaymentNoJwt.status,
+        body: dashboardPaymentNoJwt.body,
+      },
+      dashboardPaymentMethodsNoJwt: {
+        status: dashboardPaymentMethodsNoJwt.status,
+        body: dashboardPaymentMethodsNoJwt.body,
+      },
+      dashboardSimulationNoJwt: { status: dashboardNoJwt.status, body: dashboardNoJwt.body },
+      dashboardSimulationAdmin: { status: dashboardAdmin.status, body: dashboardAdmin.body },
+      dashboardForeignPayment: { status: dashboardForeign.status, body: dashboardForeign.body },
+      paymentJwtWithoutApiKey: { status: jwtWithoutApiKey.status, body: jwtWithoutApiKey.body },
+    })}`);
+    expect(httpContract).toEqual([
+      { name: 'payments_only_api_key', status: 201, code: null },
+      { name: 'payments_no_credentials', status: 401, code: 'missing_api_key' },
+      { name: 'payments_jwt_without_api_key', status: 401, code: 'missing_api_key' },
+      { name: 'payments_invalid_api_key', status: 401, code: 'invalid_api_key' },
+      { name: 'idempotency_body_reused', status: 422, code: 'idempotency_key_reused' },
+      { name: 'idempotency_in_progress', status: 409, code: 'idempotency_in_progress' },
+      { name: 'dashboard_simulate_no_jwt', status: 401, code: 'unauthorized' },
+      { name: 'dashboard_simulate_admin', status: 403, code: 'forbidden' },
+      { name: 'dashboard_simulate_foreign', status: 404, code: 'payment_not_found' },
+      { name: 'dashboard_simulate_production', status: 403, code: 'simulation_not_allowed' },
+      { name: 'qr_callback_no_api_key', status: 401, code: 'missing_api_key' },
+      { name: 'qr_callback_valid_api_key_foreign_payment', status: 404, code: 'payment_not_found' },
+      { name: 'qr_callback_production_payment', status: 403, code: 'simulation_not_allowed' },
+      { name: 'dashboard_get_missing_payment', status: 404, code: 'payment_not_found' },
+      { name: 'dashboard_get_payment_no_jwt', status: 401, code: 'unauthorized' },
+      { name: 'dashboard_get_payment_methods_no_jwt', status: 401, code: 'unauthorized' },
+    ]);
   });
 });
 

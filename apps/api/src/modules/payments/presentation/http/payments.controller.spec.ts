@@ -1,4 +1,7 @@
 import { BadRequestException, HttpStatus } from '@nestjs/common';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { IS_PUBLIC_KEY } from '../../../../shared/auth/public.decorator';
+import { ApiKeyAuthGuard } from '../guards/api-key-auth.guard';
 import { PaymentsController } from './payments.controller';
 import type { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import type { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
@@ -62,6 +65,11 @@ describe('PaymentsController', () => {
       createPaymentUseCase as CreatePaymentUseCase,
       getPaymentUseCase as GetPaymentUseCase,
     );
+  });
+
+  it('allows API-key-only authentication while retaining the API key guard', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, PaymentsController)).toBe(true);
+    expect(Reflect.getMetadata(GUARDS_METADATA, PaymentsController)).toEqual([ApiKeyAuthGuard]);
   });
 
   describe('create', () => {

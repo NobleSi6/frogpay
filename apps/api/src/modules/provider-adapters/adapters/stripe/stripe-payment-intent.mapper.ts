@@ -24,6 +24,7 @@ export const AdapterErrorCode = {
   AMOUNT_MISMATCH: ERROR_CATALOG.amount_mismatch.code,
   CURRENCY_MISMATCH: ERROR_CATALOG.currency_mismatch.code,
   REFERENCE_NOT_FOUND: ERROR_CATALOG.reference_not_found.code,
+  INVALID_STATE_TRANSITION: ERROR_CATALOG.invalid_state_transition.code,
 } as const;
 
 /**

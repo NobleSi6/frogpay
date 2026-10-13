@@ -108,7 +108,7 @@ describe('PaymentSettlementService', () => {
   it('atomically refuses QR approval if expiration passes after the initial read', async () => {
     tx.payment.updateMany.mockImplementation(
       async ({ where }: { where: { expires_at: { gt: Date } } }) => {
-      payment.expires_at = new Date(Date.now() - 1);
+      payment.expires_at = new Date(where.expires_at.gt.getTime() - 1);
       if (payment.expires_at <= where.expires_at.gt) return { count: 0 };
       return { count: 1 };
       },

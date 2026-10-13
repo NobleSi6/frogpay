@@ -15,6 +15,10 @@ import { PaymentsController } from './presentation/http/payments.controller';
 import { DashboardPaymentsController } from './presentation/http/dashboard-payments.controller';
 import { SimulatorsController } from './presentation/http/simulators.controller';
 import { DashboardBankTransactionsController } from './presentation/http/dashboard-bank-transactions.controller';
+import { PROVIDER_RETRY_SCHEDULER } from './application/ports/provider-retry-scheduler.port';
+import { RetryProviderAuthorizationUseCase } from './application/use-cases/retry-provider-authorization.use-case';
+import { ProviderRetryWorker } from './application/workers/provider-retry.worker';
+import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.queue';
 
 @Module({
   imports: [EventBusModule, ProviderAdaptersModule, CacheModule],
@@ -34,6 +38,11 @@ import { DashboardBankTransactionsController } from './presentation/http/dashboa
     PaymentSettlementService,
     PaymentQrExpirationJob,
     ApiKeyAuthGuard,
+    // TSK-DEV2-305: reintentos de pagos asíncronos con backoff y DLQ de pagos
+    ProviderRetryQueue,
+    { provide: PROVIDER_RETRY_SCHEDULER, useExisting: ProviderRetryQueue },
+    RetryProviderAuthorizationUseCase,
+    ProviderRetryWorker,
   ],
   exports: [
     PaymentEventProbe,

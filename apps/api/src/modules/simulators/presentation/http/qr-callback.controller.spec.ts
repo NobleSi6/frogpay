@@ -1,3 +1,6 @@
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { IS_PUBLIC_KEY } from '../../../../shared/auth/public.decorator';
+import { ApiKeyAuthGuard } from '../../../payments/presentation/guards/api-key-auth.guard';
 import type { ApiKeyContext } from '../../../payments/presentation/guards/api-key-auth.guard';
 import type { PaymentSimulationService } from '../../application/payment-simulation.service';
 import { QrCallbackController } from './qr-callback.controller';
@@ -18,6 +21,11 @@ describe('QrCallbackController', () => {
     controller = new QrCallbackController(
       simulation as unknown as PaymentSimulationService,
     );
+  });
+
+  it('allows API-key-only authentication while retaining the API key guard', () => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, QrCallbackController)).toBe(true);
+    expect(Reflect.getMetadata(GUARDS_METADATA, QrCallbackController)).toEqual([ApiKeyAuthGuard]);
   });
 
   it('passes the snake_case payment id and API-key tenant to common simulation', async () => {

@@ -10,6 +10,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Public } from '../../../../shared/auth/public.decorator';
 import type { Response } from 'express';
 import {
   ApiHeader,
@@ -31,6 +32,7 @@ import { PaymentErrorResponseDto } from '../../application/dto/payment-error.dto
 
 @ApiTags('Pagos Públicos (API)')
 @Controller('v1/payments')
+@Public()
 @UseGuards(ApiKeyAuthGuard)
 export class PaymentsController {
   constructor(

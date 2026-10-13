@@ -82,3 +82,23 @@ propio** — viven dentro de un `201 Created`. La tabla de arriba lista
 Los mensajes definidos en el catálogo de código son valores por defecto de
 la API. La interfaz puede usar un mapa propio por código para presentar
 mensajes y acciones adecuados a cada flujo; esos textos no se duplican aquí.
+
+## Códigos agregados en el Sprint 3 (TSK-DEV2-305)
+
+| Código | Tipo | Cuándo ocurre |
+|---|---|---|
+| `invalid_state_transition` | Error de solicitud (HTTP 409) | Se pide una transición no permitida para el estado actual: por ejemplo, reenviar una entrega de webhook que no está fallida o conciliar un pago que ya no está `pending`. |
+| `qr_expired` | Resultado de pago (`rejected`) | El QR venció sin confirmación; el job de expiración rechaza el pago y emite `pago.rechazado`. |
+
+### `provider_unavailable` en pagos asíncronos (QR)
+
+- **Tarjeta (síncrono):** si el proveedor no responde o el circuito está abierto, el pago queda `failed` con `provider_unavailable` de inmediato. No se encola, para evitar cobros tardíos inesperados.
+- **QR (asíncrono):** el pago queda `pending` y se reintenta por RabbitMQ con backoff (5, 10, 20, 40 y 80 s por defecto, `PROVIDER_RETRY_DELAYS_MS`). Si el proveedor vuelve, se genera el QR y el pago sigue su flujo normal. Si se agotan los reintentos, el pago pasa a `rejected` con `provider_unavailable`, se emite `pago.rechazado` y el mensaje queda en la cola `frogpay.payments.dlq`.
+
+### Simular la caída de un proveedor (solo sandbox)
+
+`POST /v1/test/simulators/provider-fault` con `X-Api-Key` sandbox:
+
+    { "provider": "stripe", "mode": "error", "durationSeconds": 120 }
+
+`mode: "latency"` con `latencyMs` agrega demora; desde 3000 ms el pago termina en `provider_timeout`. `GET` lista las fallas activas y `DELETE ?provider=stripe` las quita. En producción responde 403.

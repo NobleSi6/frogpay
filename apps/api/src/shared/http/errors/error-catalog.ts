@@ -74,6 +74,11 @@ export const ERROR_CATALOG = {
     code: 'reference_not_found',
     message: 'La referencia bancaria no corresponde a ningún pago pendiente.',
   },
+  invalid_state_transition: {
+    code: 'invalid_state_transition',
+    httpStatus: 409,
+    message: 'La operación no es válida para el estado actual del recurso.',
+  },
 } as const;
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;
