@@ -2,8 +2,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
+  HttpCode,
   HttpStatus,
   Param,
   Post,
@@ -26,10 +28,15 @@ import { CurrentTenantContext } from '../../../../shared/auth/current-tenant.dec
 import type { AuthenticatedTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
+import { BankReconciliationService } from '../../application/services/bank-reconciliation.service';
 import { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import { PaymentResponseDto } from '../../application/dto/payment-response.dto';
 import { PaymentDetailsResponseDto } from '../../application/dto/payment-details.dto';
 import { PaymentErrorResponseDto } from '../../application/dto/payment-error.dto';
+import {
+  DashboardSimulateDepositDto,
+  BankDepositSimulationResponseDto,
+} from '../../application/dto/bank-deposit-simulation.dto';
 
 @ApiTags('Dashboard BFF - Pagos (TSK-DEV3-203)')
 @ApiBearerAuth()
@@ -40,11 +47,13 @@ export class DashboardPaymentsController {
   constructor(
     private readonly createPaymentUseCase: CreatePaymentUseCase,
     private readonly getPaymentUseCase: GetPaymentUseCase,
+    private readonly bankReconciliationService: BankReconciliationService,
   ) {}
 
   @Post('test')
   @ApiOperation({
-    summary: 'Crear un pago de prueba en sandbox desde el Dashboard (TSK-DEV3-203)',
+    summary:
+      'Crear un pago de prueba en sandbox desde el Dashboard (TSK-DEV3-203)',
     description:
       'Autenticado con la sesión JWT del Owner/Admin. Fuerza el ambiente sandbox y reutiliza el caso de uso común de creación de pago.',
   })
@@ -77,7 +86,8 @@ export class DashboardPaymentsController {
     if (!idempotencyKey || !isUUID(idempotencyKey)) {
       throw new BadRequestException({
         code: 'validation_error',
-        message: 'El encabezado Idempotency-Key es obligatorio y debe ser un UUID válido.',
+        message:
+          'El encabezado Idempotency-Key es obligatorio y debe ser un UUID válido.',
       });
     }
 
@@ -95,7 +105,8 @@ export class DashboardPaymentsController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Consultar el detalle completo e historial de un pago (RF-10, TSK-DEV3-203)',
+    summary:
+      'Consultar el detalle completo e historial de un pago (RF-10, TSK-DEV3-203)',
     description:
       'Devuelve el detalle del pago junto con su línea de tiempo e historial de estados para las pantallas del Dashboard.',
   })
@@ -122,5 +133,102 @@ export class DashboardPaymentsController {
     }
 
     return this.getPaymentUseCase.execute(context.tenantId, paymentId);
+  }
+
+  @Post(':id/simulate-deposit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Simular depósito bancario para un pago desde el Dashboard (TSK-BANK-303)',
+    description:
+      'Autenticado con JWT de Owner/Admin en ambiente sandbox. Permite probar flujos de conciliación directa desde la interfaz.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID del pago' })
+  @ApiResponse({
+    status: 200,
+    description: 'Simulación ejecutada.',
+    type: BankDepositSimulationResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Parámetros inválidos.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El pago no es de ambiente sandbox.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Pago no encontrado.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Transición de estado inválida.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El identificador del depósito ya se usó con datos diferentes.',
+    type: PaymentErrorResponseDto,
+  })
+  async simulateDeposit(
+    @CurrentTenantContext() context: AuthenticatedTenantContext,
+    @Param('id') paymentId: string,
+    @Body() dto: DashboardSimulateDepositDto,
+  ): Promise<BankDepositSimulationResponseDto> {
+    if (!isUUID(paymentId)) {
+      throw new BadRequestException({
+        code: 'validation_error',
+        message: 'El ID del pago debe ser un UUID válido.',
+      });
+    }
+
+    const payment = await this.getPaymentUseCase.execute(
+      context.tenantId,
+      paymentId,
+    );
+
+    if (payment.environment !== 'sandbox') {
+      throw new ForbiddenException({
+        code: 'forbidden_in_production',
+        message: 'La simulación solo está disponible en ambiente sandbox.',
+      });
+    }
+
+    if (payment.paymentMethod !== 'bank_transfer') {
+      throw new BadRequestException({
+        code: 'validation_error',
+        message:
+          'La simulación de depósito solo admite pagos por transferencia bancaria.',
+      });
+    }
+
+    let reference = payment.providerTransactionId ?? `BT-REF-${Date.now()}`;
+    let amount = payment.amount;
+
+    if (dto.mode === 'amount_mismatch') {
+      amount = (parseFloat(payment.amount) + 10).toFixed(2);
+    } else if (dto.mode === 'reference_not_found') {
+      reference = `BT-UNKNOWN-${Date.now()}`;
+    }
+
+    const result = await this.bankReconciliationService.reconcile({
+      tenantId: context.tenantId,
+      depositId: `DASH-SIM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      reference,
+      amount,
+      currency: payment.currency,
+      bankName: 'Banco FrogPay Simulado Dashboard',
+    });
+
+    return {
+      status: result.status,
+      depositId: result.depositId,
+      paymentId: result.paymentId,
+      errorCode: result.errorCode,
+    };
   }
 }

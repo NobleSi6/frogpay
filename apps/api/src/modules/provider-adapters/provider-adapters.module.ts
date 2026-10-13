@@ -5,6 +5,7 @@ import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
 import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
 import { StripeCredentialsService } from './application/stripe-credentials.service';
 import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
+import { BankTransferLocalAdapter } from './adapters/bank-transfer/bank-transfer.adapter';
 import type { PaymentProviderPort } from './ports/payment-provider.port';
 import { stripeClientProvider } from './adapters/stripe/stripe-client.provider';
 import {
@@ -87,6 +88,7 @@ import {
     CredentialsEncryptionService,
     PAYMENT_PROVIDER_PORT,
     PaymentProviderRegistry,
+    BankTransferLocalAdapter,
   ],
 })
 export class ProviderAdaptersModule {}

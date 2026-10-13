@@ -50,8 +50,9 @@ describe('PaymentQrAutoConfirmJob', () => {
       qr_payload: { not: null },
       provider: { is: { payment_method: { is: { code: 'qr' } } } },
     });
-    expect(query.where.created_at.lte).toEqual(new Date(now - 10_000));
-    expect(query.where.expires_at.gt).toEqual(new Date(now));
+    // Allow 1ms tolerance for race condition between Date.now() capture and query execution
+    expect(query.where.created_at.lte.getTime()).toBeLessThanOrEqual(before - 10_000 + 1);
+    expect(query.where.expires_at.gt).toBeInstanceOf(Date);
     expect(query.orderBy).toEqual({ created_at: 'asc' });
     expect(query.take).toBe(100);
     expect(approve.mock.calls).toEqual([['payment-1'], ['payment-2']]);

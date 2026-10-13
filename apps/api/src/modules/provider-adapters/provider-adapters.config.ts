@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { QRLocalPaymentProviderAdapter } from './adapters/qr-local/qr-local-payment-provider.adapter';
 import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
 import { MockPaymentProviderAdapter } from './adapters/mock/mock-payment-provider.adapter';
+import { BankTransferLocalAdapter } from './adapters/bank-transfer/bank-transfer.adapter';
 
 export const PAYMENT_PROVIDER_ADAPTERS_TOKEN = Symbol('PAYMENT_PROVIDER_ADAPTERS');
 
@@ -18,12 +19,25 @@ export function getPaymentProviderAdapters(
         'PAYMENT_MOCK_ADAPTER_ENABLED=true se ignora en producción; MockPaymentProviderAdapter no será registrado.',
       );
     }
-    return [StripePaymentProviderAdapter, QRLocalPaymentProviderAdapter] as const;
+    return [
+      StripePaymentProviderAdapter,
+      QRLocalPaymentProviderAdapter,
+      BankTransferLocalAdapter,
+    ] as const;
   }
 
   return mockAdapterEnabled
-    ? [StripePaymentProviderAdapter, QRLocalPaymentProviderAdapter, MockPaymentProviderAdapter] as const
-    : [StripePaymentProviderAdapter, QRLocalPaymentProviderAdapter] as const;
+    ? [
+        StripePaymentProviderAdapter,
+        QRLocalPaymentProviderAdapter,
+        BankTransferLocalAdapter,
+        MockPaymentProviderAdapter,
+      ] as const
+    : [
+        StripePaymentProviderAdapter,
+        QRLocalPaymentProviderAdapter,
+        BankTransferLocalAdapter,
+      ] as const;
 }
 
 export const PAYMENT_PROVIDER_ADAPTERS = getPaymentProviderAdapters();

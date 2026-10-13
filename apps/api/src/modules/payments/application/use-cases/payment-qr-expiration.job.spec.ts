@@ -39,7 +39,11 @@ describe('PaymentQrExpirationJob', () => {
     await job.runOnce();
 
     expect(findMany).toHaveBeenCalledWith({
-      where: { status: 'pending', expires_at: { lte: expect.any(Date) } },
+      where: {
+        status: 'pending',
+        expires_at: { lte: expect.any(Date) },
+        provider: { payment_method: { code: 'qr' } },
+      },
       orderBy: { expires_at: 'asc' },
       select: { id: true },
       take: 100,
