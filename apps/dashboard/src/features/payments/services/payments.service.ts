@@ -1,7 +1,5 @@
 import { apiRequest } from "@/lib/api-client";
-import { SPRINT1_DEMO_MODE } from "@/lib/demo-mode";
 import type { PaymentEnvironment } from "@/features/provider-credentials/provider-credentials-client";
-import { getMockBankTransfer } from "./bank-transfer.service";
 
 export interface CreatePaymentInput {
   amount: number;
@@ -72,16 +70,6 @@ interface PaymentDetailsResponse extends PaymentResponse {
   }>;
 }
 
-const mockQrPayments = new Map<string, PaymentDetail>();
-
-function requireMockQrPayment(paymentId: string) {
-  const payment = mockQrPayments.get(paymentId);
-  if (!payment) {
-    throw new Error('No se encontró el pago QR de prueba. Genera un nuevo código.');
-  }
-  return payment;
-}
-
 export const paymentsService = {
   // Pago con Tarjeta (Sprint 2)
   createPayment: async (data: CreatePaymentInput): Promise<PaymentResponse> => {
@@ -108,56 +96,6 @@ export const paymentsService = {
       throw new Error('El monto debe ser un número mayor a cero.');
     }
 
-    if (SPRINT1_DEMO_MODE) {
-      const id = `qr_mock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const createdAt = new Date();
-      const expiresAt = new Date(createdAt.getTime() + 15 * 60 * 1000).toISOString();
-      const amount = Number(data.amount.toFixed(2));
-      const qrPayload = `FROGPAY-SANDBOX|${id}|${data.currency}|${amount.toFixed(2)}`;
-
-      mockQrPayments.set(id, {
-        id,
-        amount,
-        currency: data.currency,
-        fee: 0,
-        net: amount,
-        paymentMethod: 'qr',
-        environment: 'sandbox',
-        merchantReference: `DASH-QR-${data.idempotencyKey}`,
-        status: 'PENDING',
-        errorCode: null,
-        createdAt: createdAt.toLocaleString('es-BO', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }),
-        qrPayload,
-        expiresAt,
-        timeline: [{
-          status: 'pending',
-          timestamp: createdAt.toLocaleTimeString('es-BO'),
-          isCurrent: true,
-        }],
-      });
-
-      return {
-        id,
-        status: 'pending',
-        amount: amount.toFixed(2),
-        currency: data.currency,
-        paymentMethod: 'qr',
-        environment: 'sandbox',
-        merchantReference: `DASH-QR-${data.idempotencyKey}`,
-        commissionAmount: '0.00',
-        netAmount: amount.toFixed(2),
-        providerTransactionId: null,
-        errorCode: null,
-        createdAt: createdAt.toISOString(),
-        updatedAt: createdAt.toISOString(),
-        qrPayload,
-        expiresAt,
-      };
-    }
-
     return apiRequest<QrPaymentResponse>('/dashboard/payments/test', {
       method: 'POST',
       headers: { 'Idempotency-Key': data.idempotencyKey },
@@ -170,71 +108,22 @@ export const paymentsService = {
     });
   },
 
-  // Simulación de Pago QR en Sandbox (TSK-DEV1-302)
+  // Simulación de Pago QR en Sandbox (dashboard BFF)
   simulateQrPayment: async (
     paymentId: string,
-    result: 'APPROVED' | 'REJECTED',
-  ): Promise<void> => {
-    if (!SPRINT1_DEMO_MODE) {
-      throw new Error('La simulación remota de pagos QR no está disponible en el backend.');
-    }
-
-    const payment = requireMockQrPayment(paymentId);
-    mockQrPayments.set(paymentId, {
-      ...payment,
-      status: result,
-      timeline: [
-        ...payment.timeline.map((event) => ({ ...event, isCurrent: false })),
-        { status: result.toLowerCase(), timestamp: new Date().toLocaleTimeString('es-BO'), isCurrent: true },
-      ],
-    });
-  },
-
-  expireMockQrPayment: async (paymentId: string): Promise<void> => {
-    if (!SPRINT1_DEMO_MODE) return;
-
-    const payment = requireMockQrPayment(paymentId);
-    mockQrPayments.set(paymentId, {
-      ...payment,
-      status: 'EXPIRED',
-      timeline: [
-        ...payment.timeline.map((event) => ({ ...event, isCurrent: false })),
-        { status: 'expired', timestamp: new Date().toLocaleTimeString('es-BO'), isCurrent: true },
-      ],
-    });
+    result: 'APPROVED' | 'FAILED',
+  ): Promise<{ paymentId: string; status: string; changed: boolean }> => {
+    return apiRequest<{ paymentId: string; status: string; changed: boolean }>(
+      `/dashboard/payments/${encodeURIComponent(paymentId)}/simulate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ result }),
+      },
+    );
   },
 
   // Obtener Detalle de Pago por ID (Compatible con Tarjeta y QR)
   getPaymentById: async (id: string): Promise<PaymentDetail> => {
-    if (SPRINT1_DEMO_MODE && mockQrPayments.has(id)) {
-      return requireMockQrPayment(id);
-    }
-    const mockTransfer = getMockBankTransfer(id);
-    if (mockTransfer) {
-      const status = mockTransfer.status.toUpperCase() as PaymentStatus;
-      return {
-        id: mockTransfer.id,
-        amount: Number(mockTransfer.amount),
-        currency: mockTransfer.currency,
-        fee: 0,
-        net: Number(mockTransfer.amount),
-        paymentMethod: mockTransfer.paymentMethod,
-        environment: mockTransfer.environment,
-        merchantReference: mockTransfer.merchantReference,
-        status,
-        errorCode: null,
-        createdAt: new Date(mockTransfer.createdAt).toLocaleString('es-BO', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }),
-        timeline: [{
-          status: mockTransfer.status,
-          timestamp: new Date(mockTransfer.createdAt).toLocaleTimeString('es-BO'),
-          isCurrent: true,
-        }],
-      };
-    }
-
     const payment = await apiRequest<PaymentDetailsResponse>(
       `/dashboard/payments/${encodeURIComponent(id)}`,
     );

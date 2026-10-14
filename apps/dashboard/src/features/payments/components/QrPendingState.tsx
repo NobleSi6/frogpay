@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SPRINT1_DEMO_MODE } from "@/lib/demo-mode";
 
 interface QrPendingStateProps {
   qrPayload: string;
@@ -75,7 +74,7 @@ export function QrPendingState({
       <div className="w-full mt-6 p-4 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 space-y-3">
         <div>
           <p className="text-xs text-slate-500 font-medium">
-            {SPRINT1_DEMO_MODE ? "Simulador (solo sandbox)" : "Vista previa del flujo"}
+            Simulador (solo sandbox)
           </p>
         </div>
         <Button

@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorAlert } from '@/components/shared/error-alert';
 import { useReconciliation } from '../hooks/useReconciliation';
 import { ReconciliationStatus } from '../services/reconciliation.service';
 
@@ -21,10 +23,15 @@ const statusConfig: Record<ReconciliationStatus, { label: string; className: str
     label: 'Monto distinto',
     className: 'bg-amber-50 text-amber-600 border-none font-medium',
   },
+  CURRENCY_MISMATCH: {
+    label: 'Moneda distinta',
+    className: 'bg-amber-50 text-amber-600 border-none font-medium',
+  },
 };
 
 export function BankReconciliationTable() {
-  const { transactions, isLoading } = useReconciliation();
+  const [page, setPage] = useState(1);
+  const { transactions, pagination, isLoading, isError, error } = useReconciliation(page);
 
   return (
     <Card className="shadow-sm border-slate-200/80 rounded-2xl bg-white">
@@ -45,6 +52,11 @@ export function BankReconciliationTable() {
       </CardHeader>
 
       <CardContent className="p-0">
+        {isError && (
+          <div className="p-6">
+            <ErrorAlert error={error} title="No pudimos cargar las transacciones bancarias" />
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -103,6 +115,31 @@ export function BankReconciliationTable() {
             </tbody>
           </table>
         </div>
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t p-4 text-xs text-muted-foreground">
+            <span>
+              Página {pagination.page} de {pagination.totalPages} · {pagination.total} transacciones
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= pagination.totalPages || isLoading}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

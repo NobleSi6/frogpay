@@ -1,16 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { reconciliationService, BankTransaction } from '../services/reconciliation.service';
+import { reconciliationService } from '../services/reconciliation.service';
 
-export function useReconciliation() {
-  const query = useQuery<BankTransaction[]>({
-    queryKey: ['bank-transactions'],
-    queryFn: () => reconciliationService.getBankTransactions(),
+export function useReconciliation(page = 1) {
+  const query = useQuery({
+    queryKey: ['bank-transactions', page],
+    queryFn: () => reconciliationService.getBankTransactions(page),
   });
 
   return {
-    transactions: query.data || [],
+    transactions: query.data?.transactions ?? [],
+    pagination: query.data?.pagination,
     isLoading: query.isLoading,
     isError: query.isError,
+    error: query.error,
     refetch: query.refetch,
   };
 }

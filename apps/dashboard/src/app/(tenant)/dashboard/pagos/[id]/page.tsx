@@ -157,7 +157,7 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      <WebhookDeliveriesTable deliveries={[]} />
+      <WebhookDeliveriesTable paymentId={id} environment={payment.environment} />
     </div>
   );
 }

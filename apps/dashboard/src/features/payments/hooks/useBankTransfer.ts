@@ -19,12 +19,14 @@ export function useBankTransfer(paymentId: string) {
   const simulateDepositMutation = useMutation({
     mutationFn: (simulationType: BankSimulationType) =>
       bankTransferService.simulateBankDeposit(paymentId, simulationType),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  });
-
-  const expireMutation = useMutation({
-    mutationFn: () => bankTransferService.expireMockBankTransfer(paymentId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({ queryKey: ['payment-detail', paymentId] }),
+        queryClient.invalidateQueries({ queryKey: ['bank-transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['webhook-deliveries'] }),
+      ]);
+    },
   });
 
   return {
@@ -33,6 +35,6 @@ export function useBankTransfer(paymentId: string) {
     simulateDeposit: simulateDepositMutation.mutate,
     isSimulating: simulateDepositMutation.isPending,
     simulationError: simulateDepositMutation.error,
-    expirePayment: expireMutation.mutate,
+    expirePayment: query.refetch,
   };
 }
