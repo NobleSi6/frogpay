@@ -5,6 +5,7 @@ import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
 import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
 import { StripeCredentialsService } from './application/stripe-credentials.service';
 import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
+import { BankTransferLocalAdapter } from './adapters/bank-transfer/bank-transfer.adapter';
 import type { PaymentProviderPort } from './ports/payment-provider.port';
 import { stripeClientProvider } from './adapters/stripe/stripe-client.provider';
 import {
@@ -22,13 +23,15 @@ import {
   PAYMENT_PROVIDER_ADAPTERS,
   PAYMENT_PROVIDER_ADAPTERS_TOKEN,
 } from './provider-adapters.config';
+import { CircuitBreakerModule } from './resilience/circuit-breaker.module';
+import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
 
 /**
  * Proveedores disponibles y credenciales de Stripe administradas por tenant.
  * Payments selecciona el adaptador usando PaymentProviderRegistry.
  */
 @Module({
-  imports: [EventBusModule],
+  imports: [EventBusModule, CircuitBreakerModule],
   controllers: [StripeCredentialsController],
   providers: [
     AdapterEventProbe,
@@ -64,13 +67,18 @@ import {
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN],
+      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN, CircuitBreakerRegistry],
       useFactory: (
         config: ConfigService,
         registrations: PaymentProviderRegistration[],
+        breakers: CircuitBreakerRegistry,
       ): PaymentProviderRegistry => {
+        // Cada adaptador se registra envuelto en su propio circuito (TSK-DEV2-304).
         const registry = new PaymentProviderRegistry(
-          registrations,
+          registrations.map((registration) => ({
+            adapterCode: registration.adapterCode,
+            adapter: breakers.protect(registration.adapterCode, registration.adapter),
+          })),
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();
@@ -87,6 +95,8 @@ import {
     CredentialsEncryptionService,
     PAYMENT_PROVIDER_PORT,
     PaymentProviderRegistry,
+    BankTransferLocalAdapter,
+    CircuitBreakerModule,
   ],
 })
 export class ProviderAdaptersModule {}

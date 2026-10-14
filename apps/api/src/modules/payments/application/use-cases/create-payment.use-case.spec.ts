@@ -487,6 +487,47 @@ describe('CreatePaymentUseCase', () => {
     saveSpy.mockRestore();
   });
 
+  it('creates a bank_transfer payment with status pending and bankInstructions', async () => {
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'bank_transfer',
+      label: 'Transferencia bancaria',
+      processingMode: 'asynchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '1.00', variableBps: 100, currency: 'BOB' },
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'pending',
+      providerTransactionId: 'BT-2026-A81F92',
+      expiresAt: new Date('2026-10-12T20:00:00.000Z'),
+      bankInstructions: {
+        bankName: 'Banco FrogPay Simulado',
+        accountNumber: '10000012345',
+        accountHolder: 'FrogPay Bolivia S.R.L.',
+        amount: '150.00',
+        currency: 'BOB',
+        reference: 'BT-2026-A81F92',
+      },
+    });
+
+    const bankDto: CreatePaymentDto = {
+      amount: '150.00',
+      currency: 'BOB',
+      paymentMethod: 'bank_transfer',
+      merchantReference: 'ORDEN-BT-101',
+    };
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, bankDto);
+
+    expect(result.response.status).toBe('pending');
+    expect(result.response.bankInstructions?.reference).toBe('BT-2026-A81F92');
+    expect(result.response.providerTransactionId).toBe('BT-2026-A81F92');
+    expect(result.response.expiresAt).toBeDefined();
+    expect(result.response.commissionAmount).toBeNull();
+    expect(planUsage).toBeNull();
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0].event_type).toBe('pago.creado');
+  });
+
   it('persists and caches pending QR payments without a token or final event', async () => {
     const qrPayload = '0002010102126304A1B2';
     const expiresAt = new Date('2026-10-10T18:45:00.000Z');
@@ -559,5 +600,71 @@ describe('CreatePaymentUseCase', () => {
     expect(transaction.payment_status_history.create).toHaveBeenCalledTimes(1);
     expect(outboxEvents.map(({ event_type }) => event_type)).toEqual(['pago.creado']);
     expect(planUsage).toBeNull();
+  });
+
+  describe('reintentos de pagos asíncronos (TSK-DEV2-305)', () => {
+    const qrDto: CreatePaymentDto = {
+      amount: '50.00',
+      currency: 'BOB',
+      paymentMethod: 'qr',
+      merchantReference: 'orden-qr-1',
+    } as CreatePaymentDto;
+
+    function asyncSetup(method: 'qr' | 'card') {
+      paymentProviders.capabilityOf.mockReturnValue({
+        code: method,
+        label: method,
+        processingMode: method === 'qr' ? 'asynchronous' : 'synchronous',
+        requiresPaymentToken: method === 'card',
+        fees: { fixedAmount: '0.00', variableBps: 0, currency: 'BOB' },
+      });
+      paymentProvider.authorize.mockResolvedValue({ outcome: 'error', errorCode: 'provider_unavailable' });
+      const scheduler = {
+        delaysMs: [5000, 10000],
+        schedule: jest.fn().mockResolvedValue(undefined),
+        deadLetter: jest.fn(),
+      };
+      const settlement = { reject: jest.fn().mockResolvedValue({}), approve: jest.fn() };
+      const asyncUseCase = new CreatePaymentUseCase(
+        { withTenant } as unknown as PrismaTenantContextService,
+        idempotency,
+        paymentProviders,
+        scheduler,
+        settlement as never,
+      );
+      return { asyncUseCase, scheduler, settlement };
+    }
+
+    it('un pago QR con el proveedor caído queda pendiente y se encola para reintento', async () => {
+      const { asyncUseCase, scheduler } = asyncSetup('qr');
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+      expect(response.status).toBe('pending');
+      expect(response.errorCode).toBeNull();
+      expect(scheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentId: createdPayment.id, tenantId, paymentMethod: 'qr', attempt: 2 }),
+        5000,
+      );
+      expect(outboxEvents.map((e) => e.event_type)).toEqual(['pago.creado']);
+    });
+
+    it('un pago con tarjeta con el proveedor caído falla de forma controlada y no se encola', async () => {
+      const { asyncUseCase, scheduler } = asyncSetup('card');
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+      expect(response.status).toBe('failed');
+      expect(response.errorCode).toBe('provider_unavailable');
+      expect(scheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('si la cola no está disponible, el pago QR se rechaza con provider_unavailable', async () => {
+      const { asyncUseCase, scheduler, settlement } = asyncSetup('qr');
+      scheduler.schedule.mockRejectedValue(new Error('RabbitMQ caído'));
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+      expect(response.status).toBe('rejected');
+      expect(response.errorCode).toBe('provider_unavailable');
+      expect(settlement.reject).toHaveBeenCalledWith(createdPayment.id, 'provider_unavailable');
+    });
   });
 });

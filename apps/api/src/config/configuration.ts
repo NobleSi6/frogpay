@@ -1,5 +1,9 @@
 export interface AppConfig {
   nodeEnv: string;
+  qrSimulatorsEnabled: boolean;
+  qrAutoConfirmEnabled: boolean;
+  qrAutoConfirmSeconds: number;
+  qrAutoConfirmIntervalSeconds: number;
   outboxPublisherEnabled: boolean;
   qrExpirationJobEnabled: boolean;
   qrExpirationJobIntervalSeconds: number;
@@ -26,6 +30,18 @@ export interface AppConfig {
 
 export default (): AppConfig => ({
   nodeEnv: process.env.NODE_ENV || 'development',
+  qrSimulatorsEnabled: resolveQrSimulatorsEnabled(),
+  qrAutoConfirmEnabled: resolveQrAutoConfirmEnabled(),
+  qrAutoConfirmSeconds: resolvePositiveInteger(
+    process.env.QR_AUTO_CONFIRM_SECONDS,
+    10,
+    'QR_AUTO_CONFIRM_SECONDS',
+  ),
+  qrAutoConfirmIntervalSeconds: resolvePositiveInteger(
+    process.env.QR_AUTO_CONFIRM_INTERVAL_SECONDS,
+    2,
+    'QR_AUTO_CONFIRM_INTERVAL_SECONDS',
+  ),
   outboxPublisherEnabled: resolveOutboxPublisherEnabled(),
   qrExpirationJobEnabled: resolveQrExpirationJobEnabled(),
   qrExpirationJobIntervalSeconds: resolvePositiveInteger(
@@ -56,6 +72,20 @@ export default (): AppConfig => ({
 
 function resolveOutboxPublisherEnabled(): boolean {
   const raw = process.env.OUTBOX_PUBLISHER_ENABLED;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return (process.env.NODE_ENV || 'development') === 'production';
+}
+
+function resolveQrSimulatorsEnabled(): boolean {
+  const raw = process.env.QR_SIMULATORS_ENABLED;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return (process.env.NODE_ENV || 'development') !== 'production';
+}
+
+function resolveQrAutoConfirmEnabled(): boolean {
+  const raw = process.env.QR_AUTO_CONFIRM_ENABLED;
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   return (process.env.NODE_ENV || 'development') === 'production';

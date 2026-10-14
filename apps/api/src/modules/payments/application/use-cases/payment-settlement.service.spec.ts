@@ -25,6 +25,7 @@ describe('PaymentSettlementService', () => {
       merchant_reference: 'orden-qr-1',
       provider_transaction_id: 'FP0123456789ABCDEF',
       provider: { payment_method: { code: 'qr' } },
+      expires_at: new Date(Date.now() + 60_000),
       tenant: {
         plan: { commission_fixed: '0.50', commission_pct: '0.0350' },
       },
@@ -42,6 +43,9 @@ describe('PaymentSettlementService', () => {
         findUnique: jest.fn(async () => payment),
         updateMany: jest.fn(async ({ where, data }) => {
           if (payment.id !== where.id || payment.status !== where.status) return { count: 0 };
+          if (where.expires_at?.gt && payment.expires_at <= where.expires_at.gt) {
+            return { count: 0 };
+          }
           const previousStatus = payment.status;
           payment = { ...payment, ...data };
           histories.push({
@@ -86,6 +90,37 @@ describe('PaymentSettlementService', () => {
     service = new PaymentSettlementService({
       withGlobalAccess,
     } as unknown as PrismaTenantContextService);
+  });
+
+  it('does not approve a QR payment after its expiration time', async () => {
+    payment.expires_at = new Date(Date.now() - 1);
+
+    await expect(service.approve(paymentId)).resolves.toEqual({
+      outcome: 'unchanged',
+      paymentId,
+      reason: 'not_pending',
+    });
+    expect(tx.payment.updateMany).not.toHaveBeenCalled();
+    expect(events).toHaveLength(0);
+    expect(histories).toHaveLength(0);
+  });
+
+  it('atomically refuses QR approval if expiration passes after the initial read', async () => {
+    tx.payment.updateMany.mockImplementation(
+      async ({ where }: { where: { expires_at: { gt: Date } } }) => {
+      payment.expires_at = new Date(where.expires_at.gt.getTime() - 1);
+      if (payment.expires_at <= where.expires_at.gt) return { count: 0 };
+      return { count: 1 };
+      },
+    );
+
+    await expect(service.approve(paymentId)).resolves.toEqual({
+      outcome: 'unchanged',
+      paymentId,
+      reason: 'not_pending',
+    });
+    expect(events).toHaveLength(0);
+    expect(histories).toHaveLength(0);
   });
 
   it('approves pending payment with calculated commission, history, usage, and outbox event', async () => {

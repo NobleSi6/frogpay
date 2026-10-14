@@ -29,6 +29,15 @@ export interface ProviderMetadata {
   methods: readonly PaymentMethodCapability[];
 }
 
+export interface BankTransferInstructions {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  amount: string;
+  currency: string;
+  reference: string;
+}
+
 /** Datos validados por la capa HTTP antes de solicitar la autorización. */
 export interface AuthorizeInput {
   /** Monto decimal como cadena, por ejemplo `"150.00"`. */
@@ -59,14 +68,19 @@ export type PaymentProviderErrorCode =
   | 'processing_error'
   | 'provider_timeout'
   | 'provider_unavailable'
-  | 'qr_expired';
+  | 'qr_expired'
+  | 'transfer_expired'
+  | 'amount_mismatch'
+  | 'currency_mismatch'
+  | 'reference_not_found';
 
 export interface ProviderResult {
   outcome: ProviderOutcome;
   providerTransactionId?: string;
-  errorCode?: PaymentProviderErrorCode;
+  errorCode?: PaymentProviderErrorCode | string;
   qrPayload?: string;
   expiresAt?: Date;
+  bankInstructions?: BankTransferInstructions;
 }
 
 export interface PaymentProviderPort {

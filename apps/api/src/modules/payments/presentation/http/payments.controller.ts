@@ -10,6 +10,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Public } from '../../../../shared/auth/public.decorator';
 import type { Response } from 'express';
 import {
   ApiHeader,
@@ -31,6 +32,7 @@ import { PaymentErrorResponseDto } from '../../application/dto/payment-error.dto
 
 @ApiTags('Pagos Públicos (API)')
 @Controller('v1/payments')
+@Public()
 @UseGuards(ApiKeyAuthGuard)
 export class PaymentsController {
   constructor(
@@ -40,9 +42,9 @@ export class PaymentsController {
 
   @Post()
   @ApiOperation({
-    summary: 'Crear un pago con tarjeta (HU-03)',
+    summary: 'Crear un pago (Tarjeta, Transferencia Bancaria o QR)',
     description:
-      'Crea un nuevo cobro con tarjeta mediante Idempotency-Key. Retorna 201 para nuevos cobros o 200 para reintentos con la misma clave.',
+      'Crea un nuevo cobro mediante Idempotency-Key. Para transferencias bancarias devuelve 201 Created en estado pending con instrucciones de depósito.',
   })
   @ApiHeader({
     name: 'X-Api-Key',
