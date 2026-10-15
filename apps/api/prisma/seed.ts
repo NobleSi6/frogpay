@@ -69,6 +69,7 @@ async function seed(): Promise<void> {
     { code: 'card', name: 'Tarjeta' },
     { code: 'wallet', name: 'Billetera digital' },
     { code: 'qr', name: 'QR interoperable' },
+    { code: 'bank_transfer', name: 'Transferencia bancaria' },
   ];
 
   for (const paymentMethod of paymentMethods) {
@@ -83,6 +84,10 @@ async function seed(): Promise<void> {
     where: { code: 'card' },
     select: { id: true },
   });
+  const qr = await prisma.payment_method.findUniqueOrThrow({
+    where: { code: 'qr' },
+    select: { id: true },
+  });
 
   await prisma.provider.upsert({
     where: { code: 'stripe' },
@@ -94,6 +99,39 @@ async function seed(): Promise<void> {
     update: {
       name: 'Stripe',
       payment_method_id: card.id,
+    },
+  });
+
+  const bankTransfer = await prisma.payment_method.findUniqueOrThrow({
+    where: { code: 'bank_transfer' },
+    select: { id: true },
+  });
+
+  await prisma.provider.upsert({
+    where: { code: 'bank_transfer_local' },
+    create: {
+      code: 'bank_transfer_local',
+      name: 'Banco FrogPay Simulado',
+      payment_method_id: bankTransfer.id,
+    },
+    update: {
+      name: 'Banco FrogPay Simulado',
+      payment_method_id: bankTransfer.id,
+      is_active: true,
+    },
+  });
+
+  await prisma.provider.upsert({
+    where: { code: 'qr_local' },
+    create: {
+      code: 'qr_local',
+      name: 'QR Local',
+      payment_method_id: qr.id,
+    },
+    update: {
+      name: 'QR Local',
+      payment_method_id: qr.id,
+      is_active: true,
     },
   });
 

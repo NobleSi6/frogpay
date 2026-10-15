@@ -1,7 +1,9 @@
-import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Optional, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { Public } from '../../../../shared/auth/public.decorator';
+import { CircuitBreakerRegistry } from '../../../provider-adapters/resilience/circuit-breaker.registry';
+import type { CircuitSnapshot } from '../../../provider-adapters/resilience/circuit-breaker';
 import { ApiHealthIndicator } from '../../indicators/api.health-indicator';
 import { DatabaseHealthIndicator } from '../../indicators/database.health-indicator';
 import { EventBusHealthIndicator } from '../../indicators/event-bus.health-indicator';
@@ -13,6 +15,7 @@ export class HealthController {
     private readonly apiHealth: ApiHealthIndicator,
     private readonly dbHealth: DatabaseHealthIndicator,
     private readonly eventBusHealth: EventBusHealthIndicator,
+    @Optional() private readonly circuitBreakers?: CircuitBreakerRegistry,
   ) {}
 
   @Get()
@@ -62,6 +65,7 @@ export class HealthController {
       database: Awaited<ReturnType<DatabaseHealthIndicator['check']>>;
       eventBus: Awaited<ReturnType<EventBusHealthIndicator['check']>>;
     };
+    circuitBreakers: CircuitSnapshot[];
   }> {
     const api = this.apiHealth.check();
     const db = await this.dbHealth.check();
@@ -78,6 +82,9 @@ export class HealthController {
         database: db,
         eventBus,
       },
+      // Informativo (TSK-DEV2-304): un circuito abierto NO marca la API como caída;
+      // la API sigue atendiendo con los demás métodos de pago.
+      circuitBreakers: this.circuitBreakers?.snapshot() ?? [],
     };
 
     const statusCode = status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;

@@ -6,13 +6,27 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
 import { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
+import type {
+  BankTransferInstructions,
+  PaymentMethodCapability,
+} from '../../../provider-adapters/ports/payment-provider.port';
 import { CreatePaymentDto } from '../dto/create-payment.dto';
 import { PaymentResponseDto, PaymentStatus } from '../dto/payment-response.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
+import { calculatePaymentAmounts } from './payment-amount-calculator';
+import {
+  PROVIDER_RETRY_SCHEDULER,
+  ProviderRetryScheduler,
+  RETRYABLE_PROVIDER_ERRORS,
+} from '../ports/provider-retry-scheduler.port';
+import { PaymentSettlementService } from './payment-settlement.service';
 
 export interface CreatePaymentExecutionResult {
   isReplay: boolean;
@@ -27,7 +41,15 @@ export class CreatePaymentUseCase {
     private readonly tenantContext: PrismaTenantContextService,
     private readonly idempotency: IdempotencyService,
     @Inject(PaymentProviderRegistry)
-    private readonly paymentProviders: Pick<PaymentProviderRegistry, 'resolve'>,
+    private readonly paymentProviders: Pick<
+      PaymentProviderRegistry,
+      'resolve' | 'capabilityOf'
+    >,
+    // TSK-DEV2-305: reintentos de pagos asíncronos cuando el proveedor no está disponible.
+    @Optional()
+    @Inject(PROVIDER_RETRY_SCHEDULER)
+    private readonly retryScheduler?: ProviderRetryScheduler,
+    @Optional() private readonly settlement?: PaymentSettlementService,
   ) {}
 
   async execute(
@@ -36,6 +58,24 @@ export class CreatePaymentUseCase {
     idempotencyKey: string,
     dto: CreatePaymentDto,
   ): Promise<CreatePaymentExecutionResult> {
+    let capability: PaymentMethodCapability;
+    try {
+      capability = this.paymentProviders.capabilityOf(dto.paymentMethod);
+    } catch (error) {
+      if (error instanceof UnsupportedPaymentMethodError) {
+        throw new ValidationError({
+          field: 'paymentMethod',
+          value: dto.paymentMethod,
+          supportedMethods: error.supportedPaymentMethods,
+        });
+      }
+      throw error;
+    }
+
+    if (capability.requiresPaymentToken && !dto.paymentToken) {
+      throw new ValidationError({ field: 'paymentToken', reason: 'required' });
+    }
+
     const bodyHash = this.idempotency.computeCanonicalBodyHash(dto);
 
     // 1. Reclamar clave de idempotencia atómicamente en Redis
@@ -99,10 +139,7 @@ export class CreatePaymentUseCase {
           // Calcular comisión según el plan
           const commFixed = plan ? Number(plan.commission_fixed) : 0;
           const commPct = plan ? Number(plan.commission_pct) : 0;
-          const calculatedCommission = Number(
-            (requestedAmount * commPct + commFixed).toFixed(2),
-          );
-          const calculatedNet = Number((requestedAmount - calculatedCommission).toFixed(2));
+          const amounts = calculatePaymentAmounts(requestedAmount, commFixed, commPct);
 
           // Obtener método de pago y proveedor
           const paymentMethod = await tx.payment_method.findUnique({
@@ -174,8 +211,8 @@ export class CreatePaymentUseCase {
 
           return {
             paymentId: payment.id,
-            commissionAmount: calculatedCommission.toFixed(2),
-            netAmount: calculatedNet.toFixed(2),
+            commissionAmount: amounts.commissionAmount,
+            netAmount: amounts.netAmount,
           };
         });
 
@@ -184,6 +221,9 @@ export class CreatePaymentUseCase {
         status: PaymentStatus;
         providerTransactionId: string | null;
         errorCode: string | null;
+        expiresAt: Date | null;
+        bankInstructions: BankTransferInstructions | null;
+        qrPayload: string | null;
       };
       try {
         const provider = this.paymentProviders.resolve(dto.paymentMethod);
@@ -195,12 +235,17 @@ export class CreatePaymentUseCase {
         });
         providerResult = {
           status:
-            result.outcome === 'approved'
-              ? 'approved'
-              : result.outcome === 'declined'
-                ? 'rejected'
-                : 'failed',
+            result.outcome === 'pending'
+              ? 'pending'
+              : result.outcome === 'approved'
+                ? 'approved'
+                : result.outcome === 'declined'
+                  ? 'rejected'
+                  : 'failed',
           providerTransactionId: result.providerTransactionId ?? null,
+          expiresAt: result.expiresAt ?? null,
+          bankInstructions: result.bankInstructions ?? null,
+          qrPayload: result.qrPayload ?? null,
           errorCode:
             result.errorCode ??
             (result.outcome === 'declined'
@@ -214,14 +259,28 @@ export class CreatePaymentUseCase {
           status: PaymentStatus;
           providerTransactionId: string | null;
           errorCode: string | null;
+          expiresAt: Date | null;
+          bankInstructions: BankTransferInstructions | null;
+          qrPayload: string | null;
         };
       } catch (error) {
         this.logger.error(`Error o timeout llamando al proveedor de pago:`, error);
         providerResult = {
           status: 'failed',
           providerTransactionId: null,
+          qrPayload: null,
+          expiresAt: null,
           errorCode: 'provider_timeout',
+          bankInstructions: null,
         };
+      }
+
+      // 3b. TSK-DEV2-305: un pago asíncrono (QR) con el proveedor caído no se da por
+      // fallido: queda pendiente y se reintenta por la cola con backoff exponencial.
+      // Los pagos síncronos (tarjeta) fallan de forma controlada y no se encolan.
+      const retryAuthorization = this.shouldRetryAsynchronously(dto.paymentMethod, providerResult);
+      if (retryAuthorization) {
+        providerResult = { ...providerResult, status: 'pending', errorCode: null };
       }
 
       // 4. Transacción 2 (Local): Actualizar pago, historial, outbox final y consumo de plan
@@ -242,9 +301,25 @@ export class CreatePaymentUseCase {
             error_code: providerResult.errorCode ?? null,
             commission_amount: isApproved ? commissionAmount : null,
             net_amount: isApproved ? netAmount : null,
+            expires_at: providerResult.expiresAt ?? undefined,
+            bank_instructions: providerResult.bankInstructions
+              ? {
+                  bankName: providerResult.bankInstructions.bankName,
+                  accountNumber: providerResult.bankInstructions.accountNumber,
+                  accountHolder: providerResult.bankInstructions.accountHolder,
+                  amount: providerResult.bankInstructions.amount,
+                  currency: providerResult.bankInstructions.currency,
+                  reference: providerResult.bankInstructions.reference,
+                }
+              : undefined,
+            qr_payload: providerResult.qrPayload ?? undefined,
             updated_at: new Date(),
           },
         });
+
+        if (finalStatus === 'pending') {
+          return payment;
+        }
 
         // Historial de cambio de estado
         await tx.payment_status_history.create({
@@ -334,10 +409,27 @@ export class CreatePaymentUseCase {
         return payment;
       });
 
+      let responseStatus: PaymentStatus = finalStatus;
+      let responseErrorCode = providerResult.errorCode ?? null;
+      if (retryAuthorization) {
+        const scheduled = await this.scheduleProviderRetry({
+          paymentId,
+          tenantId,
+          paymentMethod: dto.paymentMethod,
+          amount: dto.amount,
+          currency: dto.currency,
+          idempotencyKey,
+        });
+        if (!scheduled) {
+          responseStatus = 'rejected';
+          responseErrorCode = 'provider_unavailable';
+        }
+      }
+
       // 5. Construir respuesta final
       const paymentResponse: PaymentResponseDto = {
         id: updatedPayment.id,
-        status: finalStatus,
+        status: responseStatus,
         amount: dto.amount,
         currency: dto.currency,
         paymentMethod: dto.paymentMethod,
@@ -346,9 +438,18 @@ export class CreatePaymentUseCase {
         commissionAmount: isApproved ? commissionAmount : null,
         netAmount: isApproved ? netAmount : null,
         providerTransactionId: providerResult.providerTransactionId ?? null,
-        errorCode: providerResult.errorCode ?? null,
+        errorCode: responseErrorCode,
+        expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+        bankInstructions: providerResult.bankInstructions ?? null,
+        qrPayload: providerResult.qrPayload ?? null,
         createdAt: updatedPayment.created_at.toISOString(),
         updatedAt: updatedPayment.updated_at.toISOString(),
+        ...(responseStatus === 'pending'
+          ? {
+              qrPayload: providerResult.qrPayload,
+              expiresAt: providerResult.expiresAt?.toISOString() ?? null,
+            }
+          : {}),
       };
 
       // 6. Guardar en caché de idempotencia por 24 horas
@@ -371,6 +472,40 @@ export class CreatePaymentUseCase {
 
       await this.idempotency.releaseLock(tenantId, environment, idempotencyKey);
       throw error;
+    }
+  }
+
+  private shouldRetryAsynchronously(
+    paymentMethod: string,
+    result: { status: PaymentStatus; errorCode: string | null },
+  ): boolean {
+    if (!this.retryScheduler || result.status !== 'failed') return false;
+    if (!RETRYABLE_PROVIDER_ERRORS.includes(result.errorCode ?? '')) return false;
+    try {
+      return this.paymentProviders.capabilityOf(paymentMethod).processingMode === 'asynchronous';
+    } catch {
+      return false;
+    }
+  }
+
+  /** Encola el segundo intento; si la cola no está disponible, el pago se rechaza de forma controlada. */
+  private async scheduleProviderRetry(input: {
+    paymentId: string;
+    tenantId: string;
+    paymentMethod: string;
+    amount: string;
+    currency: string;
+    idempotencyKey: string;
+  }): Promise<boolean> {
+    const scheduler = this.retryScheduler!;
+    try {
+      await scheduler.schedule({ ...input, attempt: 2 }, scheduler.delaysMs[0]);
+      this.logger.warn(`Proveedor no disponible: pago ${input.paymentId} encolado para reintento`);
+      return true;
+    } catch (error) {
+      this.logger.error(`No se pudo encolar el reintento del pago ${input.paymentId}: ${String(error)}`);
+      await this.settlement?.reject(input.paymentId, 'provider_unavailable');
+      return false;
     }
   }
 }

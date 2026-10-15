@@ -10,14 +10,27 @@ import type { RedisService } from '../../../../shared/cache/redis.service';
 import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import type { PaymentProviderPort } from '../../../provider-adapters/ports/payment-provider.port';
 import type { PaymentProviderRegistry } from '../../../provider-adapters/registry/payment-provider.registry';
+import { UnsupportedPaymentMethodError } from '../../../provider-adapters/registry/payment-provider.binding';
 import type { CreatePaymentDto } from '../dto/create-payment.dto';
+import { ValidationError } from '../../../../shared/http/errors/validation-error';
 
 describe('CreatePaymentUseCase', () => {
   let useCase: CreatePaymentUseCase;
   let idempotency: IdempotencyService;
   let paymentProvider: jest.Mocked<PaymentProviderPort>;
-  let paymentProviders: jest.Mocked<Pick<PaymentProviderRegistry, 'resolve'>>;
+  let paymentProviders: jest.Mocked<
+    Pick<PaymentProviderRegistry, 'resolve' | 'capabilityOf'>
+  >;
   let withTenant: jest.Mock;
+  let transaction: {
+    tenant: { findUnique: jest.Mock };
+    tenant_plan_usage: { findUnique: jest.Mock; upsert: jest.Mock };
+    payment: { create: jest.Mock; update: jest.Mock };
+    payment_method: { findUnique: jest.Mock };
+    provider: { findFirst: jest.Mock };
+    payment_status_history: { create: jest.Mock };
+    domain_event_outbox: { create: jest.Mock };
+  };
 
   const tenantId = '0e21495a-7a01-4dd7-8393-6c9cd724d752';
   const idempotencyKey = '550e8400-e29b-41d4-a716-446655440000';
@@ -87,12 +100,24 @@ describe('CreatePaymentUseCase', () => {
     } as unknown as RedisService;
     idempotency = new IdempotencyService(redis);
     paymentProvider = {
+      metadata: {
+        id: 'stripe',
+        displayName: 'Stripe',
+        methods: [],
+      },
       authorize: jest.fn(),
       capture: jest.fn(),
       queryStatus: jest.fn(),
     };
     paymentProviders = {
       resolve: jest.fn().mockReturnValue(paymentProvider),
+      capabilityOf: jest.fn().mockReturnValue({
+        code: 'card',
+        label: 'Tarjeta',
+        processingMode: 'synchronous',
+        requiresPaymentToken: true,
+        fees: { fixedAmount: '0.30', variableBps: 290, currency: 'USD' },
+      }),
     };
 
     createdPayment = {
@@ -107,7 +132,7 @@ describe('CreatePaymentUseCase', () => {
     outboxEvents = [];
     planUsage = null;
 
-    const mockTx = {
+    transaction = {
       tenant: {
         findUnique: jest.fn().mockResolvedValue(mockTenant),
       },
@@ -125,7 +150,10 @@ describe('CreatePaymentUseCase', () => {
         findFirst: jest.fn().mockResolvedValue(mockProvider),
       },
       payment: {
-        create: jest.fn().mockImplementation(async () => createdPayment),
+        create: jest.fn().mockImplementation(async ({ data }) => {
+          createdPayment = { ...createdPayment, ...data };
+          return createdPayment;
+        }),
         update: jest.fn().mockImplementation(async (args) => {
           createdPayment = { ...createdPayment, ...args.data };
           return createdPayment;
@@ -143,7 +171,7 @@ describe('CreatePaymentUseCase', () => {
     };
 
     withTenant = jest.fn(async (_tenantId: string, callback: (tx: never) => Promise<unknown>) =>
-      callback(mockTx as never),
+      callback(transaction as never),
     );
 
     useCase = new CreatePaymentUseCase(
@@ -151,6 +179,74 @@ describe('CreatePaymentUseCase', () => {
       idempotency,
       paymentProviders,
     );
+  });
+
+  it('rejects unsupported methods before acquiring a lock or opening a database transaction', async () => {
+    paymentProviders.capabilityOf.mockImplementation(() => {
+      throw new UnsupportedPaymentMethodError('unknown', ['card']);
+    });
+    const acquireLock = jest.spyOn(idempotency, 'acquireLock');
+
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+        ...validDto,
+        paymentMethod: 'unknown',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    expect(acquireLock).not.toHaveBeenCalled();
+    expect(withTenant).not.toHaveBeenCalled();
+    expect(transaction.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing token when the selected capability requires one', async () => {
+    await expect(
+      useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+        ...validDto,
+        paymentToken: undefined,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(withTenant).not.toHaveBeenCalled();
+  });
+
+  it('processes a metadata capability without a token', async () => {
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'mock',
+      label: 'Mock',
+      processingMode: 'synchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '0.00', variableBps: 0, currency: 'BOB' },
+    });
+    transaction.payment_method.findUnique.mockResolvedValue({
+      id: 'pm-mock',
+      code: 'mock',
+      name: 'Mock',
+    });
+    transaction.provider.findFirst.mockResolvedValue({
+      id: 'provider-mock',
+      code: 'mock',
+      payment_method_id: 'pm-mock',
+      is_active: true,
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'approved',
+      providerTransactionId: 'mock-test-id',
+    });
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, {
+      ...validDto,
+      paymentMethod: 'mock',
+      paymentToken: undefined,
+    });
+
+    expect(result.response.status).toBe('approved');
+    expect(paymentProviders.resolve).toHaveBeenCalledWith('mock');
+    expect(paymentProvider.authorize).toHaveBeenCalledWith({
+      amount: '100.00',
+      currency: 'BOB',
+      paymentToken: '',
+      idempotencyKey,
+    });
   });
 
   it('successfully creates an approved payment with correct commission and outbox events', async () => {
@@ -389,5 +485,186 @@ describe('CreatePaymentUseCase', () => {
     );
 
     saveSpy.mockRestore();
+  });
+
+  it('creates a bank_transfer payment with status pending and bankInstructions', async () => {
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'bank_transfer',
+      label: 'Transferencia bancaria',
+      processingMode: 'asynchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '1.00', variableBps: 100, currency: 'BOB' },
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'pending',
+      providerTransactionId: 'BT-2026-A81F92',
+      expiresAt: new Date('2026-10-12T20:00:00.000Z'),
+      bankInstructions: {
+        bankName: 'Banco FrogPay Simulado',
+        accountNumber: '10000012345',
+        accountHolder: 'FrogPay Bolivia S.R.L.',
+        amount: '150.00',
+        currency: 'BOB',
+        reference: 'BT-2026-A81F92',
+      },
+    });
+
+    const bankDto: CreatePaymentDto = {
+      amount: '150.00',
+      currency: 'BOB',
+      paymentMethod: 'bank_transfer',
+      merchantReference: 'ORDEN-BT-101',
+    };
+
+    const result = await useCase.execute(tenantId, 'sandbox', idempotencyKey, bankDto);
+
+    expect(result.response.status).toBe('pending');
+    expect(result.response.bankInstructions?.reference).toBe('BT-2026-A81F92');
+    expect(result.response.providerTransactionId).toBe('BT-2026-A81F92');
+    expect(result.response.expiresAt).toBeDefined();
+    expect(result.response.commissionAmount).toBeNull();
+    expect(planUsage).toBeNull();
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0].event_type).toBe('pago.creado');
+  });
+
+  it('persists and caches pending QR payments without a token or final event', async () => {
+    const qrPayload = '0002010102126304A1B2';
+    const expiresAt = new Date('2026-10-10T18:45:00.000Z');
+    paymentProviders.capabilityOf.mockReturnValue({
+      code: 'qr',
+      label: 'Billetera QR',
+      processingMode: 'asynchronous',
+      requiresPaymentToken: false,
+      fees: { fixedAmount: '0.00', variableBps: 100, currency: 'BOB' },
+    });
+    transaction.payment_method.findUnique.mockResolvedValue({
+      id: 'pm-qr',
+      code: 'qr',
+      name: 'QR interoperable',
+    });
+    transaction.provider.findFirst.mockResolvedValue({
+      id: 'provider-qr-local',
+      code: 'qr_local',
+      payment_method_id: 'pm-qr',
+      is_active: true,
+    });
+    paymentProvider.authorize.mockResolvedValue({
+      outcome: 'pending',
+      providerTransactionId: 'FP0123456789ABCDEF',
+      qrPayload,
+      expiresAt,
+    });
+
+    const qrDto: CreatePaymentDto = {
+      amount: '100.00',
+      currency: 'BOB',
+      paymentMethod: 'qr',
+      merchantReference: 'orden-qr-1',
+    };
+    const first = await useCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+    const replay = await useCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+    expect(first).toEqual({
+      isReplay: false,
+      response: expect.objectContaining({
+        id: createdPayment.id,
+        status: 'pending',
+        paymentMethod: 'qr',
+        providerTransactionId: 'FP0123456789ABCDEF',
+        commissionAmount: null,
+        netAmount: null,
+        qrPayload,
+        expiresAt: expiresAt.toISOString(),
+      }),
+    });
+    expect(replay).toEqual({ isReplay: true, response: first.response });
+    expect(transaction.payment.create).toHaveBeenCalledTimes(1);
+    expect(transaction.payment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'pending',
+          provider_transaction_id: 'FP0123456789ABCDEF',
+          qr_payload: qrPayload,
+          expires_at: expiresAt,
+        }),
+      }),
+    );
+    expect(paymentProvider.authorize).toHaveBeenCalledTimes(1);
+    expect(paymentProvider.authorize).toHaveBeenCalledWith({
+      amount: '100.00',
+      currency: 'BOB',
+      paymentToken: '',
+      idempotencyKey,
+    });
+    expect(transaction.payment_status_history.create).toHaveBeenCalledTimes(1);
+    expect(outboxEvents.map(({ event_type }) => event_type)).toEqual(['pago.creado']);
+    expect(planUsage).toBeNull();
+  });
+
+  describe('reintentos de pagos asíncronos (TSK-DEV2-305)', () => {
+    const qrDto: CreatePaymentDto = {
+      amount: '50.00',
+      currency: 'BOB',
+      paymentMethod: 'qr',
+      merchantReference: 'orden-qr-1',
+    } as CreatePaymentDto;
+
+    function asyncSetup(method: 'qr' | 'card') {
+      paymentProviders.capabilityOf.mockReturnValue({
+        code: method,
+        label: method,
+        processingMode: method === 'qr' ? 'asynchronous' : 'synchronous',
+        requiresPaymentToken: method === 'card',
+        fees: { fixedAmount: '0.00', variableBps: 0, currency: 'BOB' },
+      });
+      paymentProvider.authorize.mockResolvedValue({ outcome: 'error', errorCode: 'provider_unavailable' });
+      const scheduler = {
+        delaysMs: [5000, 10000],
+        schedule: jest.fn().mockResolvedValue(undefined),
+        deadLetter: jest.fn(),
+      };
+      const settlement = { reject: jest.fn().mockResolvedValue({}), approve: jest.fn() };
+      const asyncUseCase = new CreatePaymentUseCase(
+        { withTenant } as unknown as PrismaTenantContextService,
+        idempotency,
+        paymentProviders,
+        scheduler,
+        settlement as never,
+      );
+      return { asyncUseCase, scheduler, settlement };
+    }
+
+    it('un pago QR con el proveedor caído queda pendiente y se encola para reintento', async () => {
+      const { asyncUseCase, scheduler } = asyncSetup('qr');
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+      expect(response.status).toBe('pending');
+      expect(response.errorCode).toBeNull();
+      expect(scheduler.schedule).toHaveBeenCalledWith(
+        expect.objectContaining({ paymentId: createdPayment.id, tenantId, paymentMethod: 'qr', attempt: 2 }),
+        5000,
+      );
+      expect(outboxEvents.map((e) => e.event_type)).toEqual(['pago.creado']);
+    });
+
+    it('un pago con tarjeta con el proveedor caído falla de forma controlada y no se encola', async () => {
+      const { asyncUseCase, scheduler } = asyncSetup('card');
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, validDto);
+
+      expect(response.status).toBe('failed');
+      expect(response.errorCode).toBe('provider_unavailable');
+      expect(scheduler.schedule).not.toHaveBeenCalled();
+    });
+
+    it('si la cola no está disponible, el pago QR se rechaza con provider_unavailable', async () => {
+      const { asyncUseCase, scheduler, settlement } = asyncSetup('qr');
+      scheduler.schedule.mockRejectedValue(new Error('RabbitMQ caído'));
+      const { response } = await asyncUseCase.execute(tenantId, 'sandbox', idempotencyKey, qrDto);
+
+      expect(response.status).toBe('rejected');
+      expect(response.errorCode).toBe('provider_unavailable');
+      expect(settlement.reject).toHaveBeenCalledWith(createdPayment.id, 'provider_unavailable');
+    });
   });
 });

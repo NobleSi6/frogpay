@@ -16,6 +16,9 @@ import { ProviderAdaptersModule } from './modules/provider-adapters/provider-ada
 import { PrismaModule } from './shared/database/prisma.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PlansModule } from './modules/plans/plans.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SimulatorsModule } from './modules/simulators/simulators.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -33,6 +36,9 @@ import { PlansModule } from './modules/plans/plans.module';
     PaymentsModule,
     ProviderAdaptersModule,
     PlansModule,
+    DashboardModule,
+    SimulatorsModule,
+    WebhooksModule,
   ],
   providers: [
     EventBusSmokePublisher,

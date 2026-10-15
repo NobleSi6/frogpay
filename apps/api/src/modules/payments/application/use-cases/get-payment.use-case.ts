@@ -1,7 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { PaymentDetailsResponseDto } from '../dto/payment-details.dto';
-import { PaymentStatus } from '../dto/payment-response.dto';
+import {
+  BankInstructionsDto,
+  PaymentStatus,
+} from '../dto/payment-response.dto';
+import type { Prisma } from '@prisma/client';
 
 @Injectable()
 export class GetPaymentUseCase {
@@ -48,6 +52,9 @@ export class GetPaymentUseCase {
         netAmount: payment.net_amount ? String(payment.net_amount) : null,
         providerTransactionId: payment.provider_transaction_id ?? null,
         errorCode: payment.error_code ?? null,
+        expiresAt: payment.expires_at ? payment.expires_at.toISOString() : null,
+        bankInstructions: toBankInstructions(payment.bank_instructions),
+        qrPayload: payment.qr_payload ?? null,
         createdAt: payment.created_at.toISOString(),
         updatedAt: payment.updated_at.toISOString(),
         statusHistory: payment.payment_status_history.map((history) => ({
@@ -62,4 +69,24 @@ export class GetPaymentUseCase {
       };
     });
   }
+}
+
+function toBankInstructions(value: Prisma.JsonValue): BankInstructionsDto | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const { bankName, accountNumber, accountHolder, amount, currency, reference } = value;
+  if (
+    typeof bankName !== 'string' ||
+    typeof accountNumber !== 'string' ||
+    typeof accountHolder !== 'string' ||
+    typeof amount !== 'string' ||
+    typeof currency !== 'string' ||
+    typeof reference !== 'string'
+  ) {
+    return null;
+  }
+
+  return { bankName, accountNumber, accountHolder, amount, currency, reference };
 }

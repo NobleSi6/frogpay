@@ -119,6 +119,9 @@ model payment {
   environment                   String                      @default("sandbox")
   tenant_provider_credential_id String?                     @db.Uuid
   provider_transaction_id       String?
+  qr_payload                    String?
+  bank_instructions             Json?
+  expires_at                    DateTime?                   @db.Timestamptz(6)
   merchant_reference            String?
   error_code                    String?
   commission_amount             Decimal?                    @db.Decimal(14, 2)
@@ -128,6 +131,7 @@ model payment {
   provider                      provider                    @relation(fields: [provider_id, payment_method_id], references: [id, payment_method_id], onDelete: NoAction, onUpdate: NoAction)
   tenant                        tenant                      @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tenant_provider_credential    tenant_provider_credential? @relation(fields: [tenant_provider_credential_id, tenant_id, provider_id, environment], references: [id, tenant_id, provider_id, environment], onDelete: NoAction, onUpdate: NoAction)
+  bank_transaction              bank_transaction[]
   payment_status_history        payment_status_history[]
   refund                        refund[]
   webhook_delivery              webhook_delivery[]
@@ -242,6 +246,8 @@ model tenant {
   tenant_plan_usage          tenant_plan_usage[]
   tenant_provider_credential tenant_provider_credential[]
   webhook                    webhook[]
+  bank_transaction           bank_transaction[]
+  webhook_delivery_attempt   webhook_delivery_attempt[]
 
   @@index([plan_id], map: "idx_tenant_plan")
 }
@@ -286,7 +292,10 @@ model webhook {
   secret_encrypted String
   event_types      Json               @default("[]")
   is_active        Boolean            @default(true)
+  environment      String             @default("sandbox")
   created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  deleted_at       DateTime?          @db.Timestamptz(6)
   tenant           tenant             @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   webhook_delivery webhook_delivery[]
 
@@ -301,6 +310,7 @@ model webhook_delivery {
   webhook_id    String    @db.Uuid
   tenant_id     String    @db.Uuid
   payment_id    String?   @db.Uuid
+  event_id      String?   @db.Uuid
   event_type    String
   payload       Json
   status        String    @default("pending")
@@ -313,8 +323,54 @@ model webhook_delivery {
   updated_at    DateTime  @default(now()) @db.Timestamptz(6)
   payment       payment?  @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
   webhook       webhook   @relation(fields: [webhook_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  attempts      webhook_delivery_attempt[]
 
   @@index([payment_id], map: "idx_wd_payment")
   @@index([tenant_id], map: "idx_wd_tenant")
   @@index([webhook_id, status], map: "idx_wd_webhook_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model bank_transaction {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String   @db.Uuid
+  external_id String?
+  reference   String
+  amount      Decimal  @db.Decimal(14, 2)
+  currency    String   @default("BOB") @db.Char(3)
+  bank_name   String
+  received_at DateTime @default(now()) @db.Timestamptz(6)
+  status      String   @default("unmatched")
+  payment_id  String?  @db.Uuid
+  metadata    Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  payment     payment? @relation(fields: [payment_id, tenant_id], references: [id, tenant_id], onDelete: NoAction, onUpdate: NoAction)
+  tenant      tenant   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenant_id], map: "idx_bt_tenant")
+  @@index([reference], map: "idx_bt_reference")
+  @@index([payment_id], map: "idx_bt_payment")
+  @@index([external_id], map: "idx_bt_external_id")
+  @@unique([tenant_id, external_id], map: "uq_bt_tenant_external_id")
+}
+
+/// Historial append-only de cada intento de entrega de un webhook (TSK-DEV2-302).
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_delivery_attempt {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  delivery_id    String           @db.Uuid
+  tenant_id      String           @db.Uuid
+  attempt_number Int
+  response_code  Int?
+  error          String?
+  duration_ms    Int              @default(0)
+  succeeded      Boolean
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  delivery       webhook_delivery @relation(fields: [delivery_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tenant         tenant           @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([delivery_id, attempt_number])
+  @@index([tenant_id], map: "idx_wda_tenant")
 }

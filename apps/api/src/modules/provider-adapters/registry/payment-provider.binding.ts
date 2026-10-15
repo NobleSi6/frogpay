@@ -58,6 +58,13 @@ export class MissingPaymentProviderBindingError extends Error {
   }
 }
 
+export class UnsupportedPaymentProviderBindingError extends Error {
+  constructor(readonly adapterCode: string, readonly paymentMethod: string) {
+    super(`El adaptador "${adapterCode}" no declara soporte para el método "${paymentMethod}".`);
+    this.name = UnsupportedPaymentProviderBindingError.name;
+  }
+}
+
 export class InvalidPaymentProviderBindingsError extends Error {
   constructor(readonly raw: string, reason: string) {
     super(`PAYMENT_PROVIDER_BINDINGS inválido ("${raw}"): ${reason}`);
@@ -71,6 +78,8 @@ export class InvalidPaymentProviderBindingsError extends Error {
  */
 export const DEFAULT_PAYMENT_PROVIDER_BINDINGS: readonly PaymentProviderBinding[] = [
   { paymentMethod: 'card', adapterCode: 'stripe' },
+  { paymentMethod: 'bank_transfer', adapterCode: 'bank_transfer_local' },
+  { paymentMethod: 'qr', adapterCode: 'qr_local' },
 ];
 
 /**

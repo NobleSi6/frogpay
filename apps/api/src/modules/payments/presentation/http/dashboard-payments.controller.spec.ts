@@ -1,7 +1,12 @@
-import { BadRequestException, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpStatus,
+} from '@nestjs/common';
 import { DashboardPaymentsController } from './dashboard-payments.controller';
 import type { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import type { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
+import type { BankReconciliationService } from '../../application/services/bank-reconciliation.service';
 import type { AuthenticatedTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import type { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import type { PaymentResponseDto } from '../../application/dto/payment-response.dto';
@@ -11,6 +16,9 @@ describe('DashboardPaymentsController', () => {
   let controller: DashboardPaymentsController;
   let createPaymentUseCase: jest.Mocked<Partial<CreatePaymentUseCase>>;
   let getPaymentUseCase: jest.Mocked<Partial<GetPaymentUseCase>>;
+  let bankReconciliationService: jest.Mocked<
+    Partial<BankReconciliationService>
+  >;
 
   const authContext: AuthenticatedTenantContext = {
     userId: 'user-123',
@@ -72,6 +80,9 @@ describe('DashboardPaymentsController', () => {
     getPaymentUseCase = {
       execute: jest.fn(),
     };
+    bankReconciliationService = {
+      reconcile: jest.fn(),
+    };
     mockResponse = {
       status: jest.fn().mockReturnThis(),
     };
@@ -79,6 +90,7 @@ describe('DashboardPaymentsController', () => {
     controller = new DashboardPaymentsController(
       createPaymentUseCase as CreatePaymentUseCase,
       getPaymentUseCase as GetPaymentUseCase,
+      bankReconciliationService as BankReconciliationService,
     );
   });
 
@@ -108,19 +120,133 @@ describe('DashboardPaymentsController', () => {
 
     it('rejects invalid UUID Idempotency-Key with 400 Bad Request', async () => {
       await expect(
-        controller.createTestPayment(authContext, 'not-a-uuid', validDto, mockResponse),
+        controller.createTestPayment(
+          authContext,
+          'not-a-uuid',
+          validDto,
+          mockResponse,
+        ),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('accepts a QR payment request without a payment token', async () => {
+      const qrResponse: PaymentResponseDto = {
+        ...sampleResponse,
+        status: 'pending',
+        paymentMethod: 'qr',
+        commissionAmount: null,
+        netAmount: null,
+        providerTransactionId: 'FP0123456789ABCDEF',
+        qrPayload: '0002010102126304A1B2',
+        expiresAt: '2026-10-10T18:45:00.000Z',
+      };
+      (createPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        isReplay: false,
+        response: qrResponse,
+      });
+      const qrDto: CreatePaymentDto = {
+        amount: '250.00',
+        currency: 'BOB',
+        paymentMethod: 'qr',
+        merchantReference: 'test-order-qr',
+      };
+
+      const result = await controller.createTestPayment(
+        authContext,
+        validUuidKey,
+        qrDto,
+        mockResponse,
+      );
+
+      expect(createPaymentUseCase.execute).toHaveBeenCalledWith(
+        'tenant-456',
+        'sandbox',
+        validUuidKey,
+        qrDto,
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.CREATED);
+      expect(result).toEqual(qrResponse);
     });
   });
 
   describe('getDetails', () => {
     it('returns payment details and timeline history for tenant in session', async () => {
-      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue(sampleDetailsResponse);
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue(
+        sampleDetailsResponse,
+      );
 
       const result = await controller.getDetails(authContext, validPaymentId);
 
-      expect(getPaymentUseCase.execute).toHaveBeenCalledWith('tenant-456', validPaymentId);
+      expect(getPaymentUseCase.execute).toHaveBeenCalledWith(
+        'tenant-456',
+        validPaymentId,
+      );
       expect(result).toEqual(sampleDetailsResponse);
+    });
+  });
+
+  describe('simulateDeposit', () => {
+    it('ejecuta conciliación simulada para pago en sandbox con modo exact', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'sandbox',
+        paymentMethod: 'bank_transfer',
+        providerTransactionId: 'BT-2026-REF1',
+        amount: '150.00',
+        currency: 'BOB',
+      });
+
+      (bankReconciliationService.reconcile as jest.Mock).mockResolvedValue({
+        status: 'reconciled',
+        depositId: 'dep-1',
+        paymentId: validPaymentId,
+      });
+
+      const result = await controller.simulateDeposit(
+        authContext,
+        validPaymentId,
+        {
+          mode: 'exact',
+        },
+      );
+
+      expect(result.status).toBe('reconciled');
+      expect(bankReconciliationService.reconcile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 'tenant-456',
+          reference: 'BT-2026-REF1',
+          amount: '150.00',
+          currency: 'BOB',
+        }),
+      );
+    });
+
+    it('rechaza con ForbiddenException si el pago es de producción', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'production',
+      });
+
+      await expect(
+        controller.simulateDeposit(authContext, validPaymentId, {
+          mode: 'exact',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('rechaza simular un depósito para un método distinto de transferencia', async () => {
+      (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
+        ...sampleDetailsResponse,
+        environment: 'sandbox',
+        paymentMethod: 'card',
+      });
+
+      await expect(
+        controller.simulateDeposit(authContext, validPaymentId, {
+          mode: 'exact',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(bankReconciliationService.reconcile).not.toHaveBeenCalled();
     });
   });
 });
