@@ -1,46 +1,90 @@
 /**
  * Puerto de salida hacia un proveedor de pagos.
  *
- * Es la frontera que `modules/payments` conoce: no sabe nada del SDK del
- * proveedor, ni de su versión, ni de sus códigos de error. Cada proveedor
- * (Stripe, QR BCB, ...) implementa esta interfaz en su propia carpeta dentro de
- * `provider-adapters/adapters/` (Adapter + Strategy, RF-16 / RNF-07).
+ * `modules/payments` depende de este contrato y no de un SDK de proveedor.
+ * Cada adaptador implementa las operaciones necesarias para autorizar, capturar
+ * y consultar el estado de una transacción.
  */
 export const PAYMENT_PROVIDER_PORT = Symbol('PAYMENT_PROVIDER_PORT');
 
-export interface AuthorizeInput {
-  /** Montodecimal como cadena, por ejemplo `"150.00"`. */
-  amount: string;
-  /** Código ISO 4217 en minúsculas o mayúsculas, por ejemplo `"BOB"`. */
+export type ProviderProcessingMode = 'synchronous' | 'asynchronous';
+
+export interface ProviderFeeStructure {
+  fixedAmount: string;
+  variableBps: number;
   currency: string;
-  /** Token de pago opaco generado por el frontend. Nunca un número de tarjeta. */
+}
+
+export interface PaymentMethodCapability {
+  code: string;
+  label: string;
+  processingMode: ProviderProcessingMode;
+  requiresPaymentToken: boolean;
+  fees: ProviderFeeStructure;
+}
+
+export interface ProviderMetadata {
+  id: string;
+  displayName: string;
+  methods: readonly PaymentMethodCapability[];
+}
+
+export interface BankTransferInstructions {
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  amount: string;
+  currency: string;
+  reference: string;
+}
+
+/** Datos validados por la capa HTTP antes de solicitar la autorización. */
+export interface AuthorizeInput {
+  /** Monto decimal como cadena, por ejemplo `"150.00"`. */
+  amount: string;
+  /** Código ISO 4217, por ejemplo `"BOB"`. */
+  currency: string;
+  /** Token de pago opaco generado por el frontend; nunca datos de tarjeta. */
   paymentToken: string;
-  /**
-   * Clave de idempotencia del pago. Debe viajar hasta el proveedor como clave
-   * de idempotencia nativa: sin esto, un reintento puede duplicar el cobro.
-   */
+  /** Clave enviada también al proveedor para evitar cobros duplicados. */
   idempotencyKey: string;
 }
 
 export interface CaptureInput {
-  /** Identificador de la transacción en el proveedor (`pi_...` en Stripe). */
   providerTransactionId: string;
 }
 
 export interface QueryStatusInput {
-  /** Identificador de la transacción en el proveedor (`pi_...` en Stripe). */
   providerTransactionId: string;
 }
 
-export type ProviderOutcome = 'approved' | 'declined' | 'timeout' | 'error';
+export type ProviderOutcome = 'approved' | 'declined' | 'timeout' | 'error' | 'pending';
+
+export type PaymentProviderErrorCode =
+  | 'card_declined'
+  | 'insufficient_funds'
+  | 'expired_card'
+  | 'incorrect_cvc'
+  | 'processing_error'
+  | 'provider_timeout'
+  | 'provider_unavailable'
+  | 'qr_expired'
+  | 'transfer_expired'
+  | 'amount_mismatch'
+  | 'currency_mismatch'
+  | 'reference_not_found';
 
 export interface ProviderResult {
   outcome: ProviderOutcome;
   providerTransactionId?: string;
-  errorCode?: string;
+  errorCode?: PaymentProviderErrorCode | string;
+  qrPayload?: string;
+  expiresAt?: Date;
+  bankInstructions?: BankTransferInstructions;
 }
 
 export interface PaymentProviderPort {
+  readonly metadata: ProviderMetadata;
   authorize(input: AuthorizeInput): Promise<ProviderResult>;
   capture(input: CaptureInput): Promise<ProviderResult>;
   queryStatus(input: QueryStatusInput): Promise<ProviderResult>;

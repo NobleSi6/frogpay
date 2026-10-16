@@ -4,6 +4,7 @@ import {
   AuthorizeInput,
   CaptureInput,
   PaymentProviderPort,
+  ProviderMetadata,
   ProviderResult,
   QueryStatusInput,
 } from '../../ports/payment-provider.port';
@@ -32,6 +33,25 @@ import { STRIPE_PROVIDER_CONFIG, StripeProviderConfig } from './stripe-provider.
  */
 @Injectable()
 export class StripePaymentProviderAdapter implements PaymentProviderPort {
+  readonly metadata: ProviderMetadata = {
+    id: 'stripe',
+    displayName: 'Stripe',
+    methods: [
+      {
+        code: 'card',
+        label: 'Tarjeta',
+        processingMode: 'synchronous',
+        requiresPaymentToken: true,
+        fees: {
+          // MVP reference values; they do not affect the existing payment flow.
+          fixedAmount: '0.30',
+          variableBps: 290,
+          currency: 'USD',
+        },
+      },
+    ],
+  };
+
   private readonly logger = new Logger(StripePaymentProviderAdapter.name);
 
   constructor(
@@ -40,14 +60,10 @@ export class StripePaymentProviderAdapter implements PaymentProviderPort {
   ) {}
 
   async authorize(input: AuthorizeInput): Promise<ProviderResult> {
-    let amount: number;
-    try {
-      amount = toStripeAmount(input.amount, input.currency);
-    } catch (error) {
-      // Un monto inválido nunca llega a Stripe: es un error de contrato.
-      this.logger.warn(`authorize() recibió un monto inválido: ${describeError(error)}`);
-      return { outcome: 'error', errorCode: AdapterErrorCode.INVALID_AMOUNT };
-    }
+    // La capa HTTP debe validar el formato con DTO/class-validator antes de
+    // llamar al adapter. Si incumple ese contrato, InvalidStripeAmountError se
+    // propaga y el filtro global lo trataría como internal_error (500).
+    const amount = toStripeAmount(input.amount, input.currency);
 
     const currency = input.currency.trim().toLowerCase();
 
@@ -77,7 +93,7 @@ export class StripePaymentProviderAdapter implements PaymentProviderPort {
         this.config.timeoutMs,
       );
 
-      return mapPaymentIntentToResult(intent);
+      return this.mapIntentToResult(intent, 'authorize');
     } catch (error) {
       this.logger.warn(
         `authorize() falló para la clave de idempotencia ${input.idempotencyKey}: ${describeError(error)}`,
@@ -115,7 +131,7 @@ export class StripePaymentProviderAdapter implements PaymentProviderPort {
         this.config.timeoutMs,
       );
 
-      return mapPaymentIntentToResult(intent);
+      return this.mapIntentToResult(intent, operation);
     } catch (error) {
       this.logger.warn(
         `${operation}() falló para ${providerTransactionId}: ${describeError(error)}`,
@@ -150,6 +166,16 @@ export class StripePaymentProviderAdapter implements PaymentProviderPort {
         clearTimeout(timer);
       }
     }
+  }
+
+  private mapIntentToResult(intent: Stripe.PaymentIntent, operation: string): ProviderResult {
+    const result = mapPaymentIntentToResult(intent);
+    if (result.errorCode === AdapterErrorCode.PROCESSING_ERROR) {
+      this.logger.warn(
+        `${operation}() recibió un estado de Stripe no esperado: ${intent.status} (paymentIntent=${intent.id}).`,
+      );
+    }
+    return result;
   }
 }
 

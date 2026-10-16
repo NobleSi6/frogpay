@@ -4,11 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './shared/http/http-exception.filter';
+import { RequestIdMiddleware } from './shared/http/middleware/request-id.middleware';
 import { TimingInterceptor } from './shared/http/timing.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('FrogPay-API');
   const app = await NestFactory.create(AppModule);
+  const requestIdMiddleware = new RequestIdMiddleware();
+  app.use(requestIdMiddleware.use.bind(requestIdMiddleware));
   app.enableShutdownHooks();
 
   const configService = app.get(ConfigService);

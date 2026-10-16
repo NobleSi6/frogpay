@@ -1,0 +1,147 @@
+=================================================================
+VERIFICACIÓN TSK-DEV3-201: POST /v1/payments con idempotencia
+=================================================================
+
+1. CONFIGURACIÓN DE REDIS
+-------------------------
+Verificar que en .env estén definidas:
+  REDIS_HOST=localhost
+  REDIS_PORT=6379
+  REDIS_PASSWORD=
+  REDIS_DB=0
+
+Verificar que Redis esté corriendo:
+  docker compose up -d redis
+  redis-cli ping  (debe responder PONG)
+
+
+2. CONSTRUIR EL PROYECTO
+------------------------
+Run:
+  npm run build --workspace=@frogpay/api
+
+Verificar que no haya errores de compilación
+
+
+3. INICIAR LA API
+-----------------
+Run:
+  npm start --workspace=@frogpay/api
+
+Verificar en los logs:
+  - "Redis connection established" (si Redis está disponible)
+  - O "Redis unavailable, idempotency will use memory fallback"
+
+
+4. PROBAR ENDPOINT POST /v1/payments
+------------------------------------
+
+SOLICITUD NUEVA (esperado: 201 Created)
+----------------------------------------
+curl -X POST http://localhost:4000/api/v1/payments ^
+  -H "X-Api-Key: tu_api_key" ^
+  -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440001" ^
+  -H "Content-Type: application/json" ^
+  -d "{
+    \"amount\": \"100.00\",
+    \"currency\": \"BOB\",
+    \"paymentMethod\": \"card\",
+    \"merchantReference\": \"orden-test-001\",
+    \"paymentToken\": \"pm_1Nk...\"
+  }"
+
+RESPUESTA ESPERADA:
+{
+  "id": "uuid-del-pago",
+  "status": "approved",
+  "amount": "100.00",
+  "currency": "BOB",
+  "paymentMethod": "card",
+  "environment": "sandbox",
+  "merchantReference": "orden-test-001",
+  "commissionAmount": "5.25",
+  "netAmount": "144.75",
+  "providerTransactionId": "pi_xxx",
+  "errorCode": null,
+  "createdAt": "2026-10-05T...",
+  "updatedAt": "2026-10-05T..."
+}
+
+
+REINTEGRO CON MISMA CLAVE (esperado: 200 OK)
+--------------------------------------------
+Usar LA MISMA Idempotency-Key de la solicitud anterior:
+
+curl -X POST http://localhost:4000/api/v1/payments ^
+  -H "X-Api-Key: tu_api_key" ^
+  -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440001" ^
+  ...
+
+RESPUESTA ESPERADA:
+- HTTP 200 (no 201)
+- Mismo body que la solicitud original
+- NO debe crear otro registro en la base de datos
+
+
+REINTENTO CON MONTOS DIFERENTES (esperado: 422)
+-----------------------------------------------
+Usar misma clave pero diferente monto:
+
+curl -X POST http://localhost:4000/api/v1/payments ^
+  -H "X-Api-Key: tu_api_key" ^
+  -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440001" ^
+  -H "Content-Type: application/json" ^
+  -d "{
+    \"amount\": \"200.00\",
+    ...
+  }"
+
+RESPUESTA ESPERADA:
+HTTP 422 Unprocessable Entity
+{
+  "code": "idempotency_key_reused",
+  "message": "Esta clave de idempotencia ya se usó con una solicitud distinta.",
+  "details": null,
+  "requestId": "req_xxx"
+}
+
+
+5. VERIFICAR EN REDIS
+---------------------
+Conectar a Redis:
+  redis-cli
+
+Ver claves de idempotencia:
+  KEYS "idempotency:*"
+
+Ver contenido de una clave:
+  HGETALL "idempotency:{tenant_id}:sandbox:550e8400-e29b-41d4-a716-446655440001"
+
+
+6. CORRER PRUEBAS UNITARIAS
+---------------------------
+Run:
+  npm test --workspace=@frogpay/api -- create-payment
+
+
+7. VERIFICAR PRUEBAS E2E (si existen)
+-------------------------------------
+Run:
+  npm run test:e2e --workspace=@frogpay/api -- dashboard-payments
+
+
+8. CHECKLIST FINAL
+------------------
+[ ] Redis configurado en .env
+[ ] Redis corriendo (ping responde PONG)
+[ ] npm run build pasa sin errores
+[ ] API inicia correctamente (logs Redis)
+[ ] Solicitud nueva devuelve 201
+[ ] Reintento con misma clave devuelve 200
+[ ] Reintento con monto distinto devuelve 422
+[ ] Claves existen en Redis
+[ ] Pruebas unitarias pasan
+
+=================================================================
+FIN DE LA VERIFICACIÓN
+=================================================================

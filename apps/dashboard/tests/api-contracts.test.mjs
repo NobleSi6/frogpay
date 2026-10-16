@@ -56,6 +56,13 @@ test("validation, duplicate and forbidden errors keep status and useful messages
     await assert.rejects(f.client.apiRequest("/test"), error => error.status === status && error.message === "Error de validación Detalle");
   }
 });
+test("API errors preserve the centralized backend code", async () => {
+  const f = fixture({ code: "provider_timeout", message: "technical provider detail", requestId: "request-id" }, 422);
+  await assert.rejects(
+    f.client.apiRequest("/test"),
+    error => error.status === 422 && error.code === "provider_timeout",
+  );
+});
 test("server errors do not leak internals and network failures remain errors", async () => {
   const f = fixture({ message: "database-password-sensitive" }, 500);
   await assert.rejects(f.client.apiRequest("/test"), error => error.status === 500 && !error.message.includes("password"));

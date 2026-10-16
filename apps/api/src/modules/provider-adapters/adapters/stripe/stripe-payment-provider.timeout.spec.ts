@@ -77,6 +77,7 @@ describe('StripePaymentProviderAdapter - timeout duro', () => {
     const elapsed = Date.now() - startedAt;
 
     expect(result.outcome).toBe('timeout');
+    expect(result.errorCode).toBe('provider_timeout');
     expect(elapsed).toBeLessThan(TIMEOUT_MS + MARGIN_MS);
   });
 
@@ -87,6 +88,7 @@ describe('StripePaymentProviderAdapter - timeout duro', () => {
     const elapsed = Date.now() - startedAt;
 
     expect(result.outcome).toBe('timeout');
+    expect(result.errorCode).toBe('provider_timeout');
     expect(elapsed).toBeLessThan(TIMEOUT_MS + MARGIN_MS);
   });
 
@@ -155,7 +157,7 @@ describe('timeout nativo del SDK de Stripe', () => {
     expect(isTimeoutError(nativeError)).toBe(true);
     expect(mapStripeErrorToResult(nativeError)).toEqual({
       outcome: 'timeout',
-      errorCode: AdapterErrorCode.TIMEOUT,
+      errorCode: AdapterErrorCode.PROVIDER_TIMEOUT,
     });
   });
 
@@ -180,6 +182,7 @@ describe('timeout nativo del SDK de Stripe', () => {
     const elapsed = Date.now() - startedAt;
 
     expect(result.outcome).toBe('error');
+    expect(result.errorCode).toBe('provider_unavailable');
     expect(result.outcome).not.toBe('timeout');
     expect(elapsed).toBeLessThan(TIMEOUT_MS);
   });

@@ -69,6 +69,7 @@ async function seed(): Promise<void> {
     { code: 'card', name: 'Tarjeta' },
     { code: 'wallet', name: 'Billetera digital' },
     { code: 'qr', name: 'QR interoperable' },
+    { code: 'bank_transfer', name: 'Transferencia bancaria' },
   ];
 
   for (const paymentMethod of paymentMethods) {
@@ -83,6 +84,10 @@ async function seed(): Promise<void> {
     where: { code: 'card' },
     select: { id: true },
   });
+  const qr = await prisma.payment_method.findUniqueOrThrow({
+    where: { code: 'qr' },
+    select: { id: true },
+  });
 
   await prisma.provider.upsert({
     where: { code: 'stripe' },
@@ -94,6 +99,39 @@ async function seed(): Promise<void> {
     update: {
       name: 'Stripe',
       payment_method_id: card.id,
+    },
+  });
+
+  const bankTransfer = await prisma.payment_method.findUniqueOrThrow({
+    where: { code: 'bank_transfer' },
+    select: { id: true },
+  });
+
+  await prisma.provider.upsert({
+    where: { code: 'bank_transfer_local' },
+    create: {
+      code: 'bank_transfer_local',
+      name: 'Banco FrogPay Simulado',
+      payment_method_id: bankTransfer.id,
+    },
+    update: {
+      name: 'Banco FrogPay Simulado',
+      payment_method_id: bankTransfer.id,
+      is_active: true,
+    },
+  });
+
+  await prisma.provider.upsert({
+    where: { code: 'qr_local' },
+    create: {
+      code: 'qr_local',
+      name: 'QR Local',
+      payment_method_id: qr.id,
+    },
+    update: {
+      name: 'QR Local',
+      payment_method_id: qr.id,
+      is_active: true,
     },
   });
 
@@ -134,11 +172,6 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       where: { role_id: role.id },
       select: { id: true },
     });
-    if (existingAdmin) {
-      console.log('Platform Admin de desarrollo ya existe; no se modificó.');
-      return;
-    }
-
     const email = process.env.DEV_PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
     const password = process.env.DEV_PLATFORM_ADMIN_PASSWORD;
     if (!email || !password) {
@@ -157,19 +190,29 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       where: { email: { equals: email, mode: 'insensitive' } },
       select: { id: true },
     });
-    if (duplicateEmail) {
+    if (duplicateEmail && duplicateEmail.id !== existingAdmin?.id) {
       throw new Error('DEV_PLATFORM_ADMIN_EMAIL ya pertenece a otro usuario.');
     }
-
     const salt = randomBytes(16).toString('hex');
     const derivedKey = (await scrypt(password, salt, 64)) as Buffer;
+    const passwordHash = `scrypt$${salt}$${derivedKey.toString('hex')}`;
+
+    if (existingAdmin) {
+      await tx.app_user.update({
+        where: { id: existingAdmin.id },
+        data: { email, password_hash: passwordHash, status: 'active' },
+      });
+      console.log('Platform Admin de desarrollo actualizado correctamente.');
+      return;
+    }
+
     await tx.app_user.create({
       data: {
         tenant_id: null,
         role_id: role.id,
         email,
         status: 'active',
-        password_hash: `scrypt$${salt}$${derivedKey.toString('hex')}`,
+        password_hash: passwordHash,
       },
     });
     console.log('Platform Admin de desarrollo creado correctamente.');

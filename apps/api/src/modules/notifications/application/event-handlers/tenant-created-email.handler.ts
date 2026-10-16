@@ -33,7 +33,7 @@ export class TenantCreatedEmailHandler implements OnModuleInit, EventHandler<Ten
     owner.issueInvitation(CryptoUtil.hashString(invitationToken), 72);
     await this.userRepository.save(owner);
 
-    const frontendUrl = this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const frontendUrl = this.config.get<string>('frontendUrl') || 'http://localhost:3000';
     const invitationUrl = new URL(`/activar-cuenta/${invitationToken}`, frontendUrl);
     invitationUrl.searchParams.set('email', owner.email.value);
 

@@ -4,6 +4,7 @@ import {
     IsInt,
     IsNotEmpty,
     IsOptional,
+    Matches,
     IsString,
     MinLength,
     Min,
@@ -17,6 +18,54 @@ class EnvironmentVariables {
     message: 'NODE_ENV debe ser development, test o production.',
   })
   NODE_ENV = 'development';
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'PAYMENT_MOCK_ADAPTER_ENABLED debe ser true o false.',
+  })
+  PAYMENT_MOCK_ADAPTER_ENABLED: 'true' | 'false' = 'false';
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'QR_SIMULATORS_ENABLED debe ser true o false.',
+  })
+  QR_SIMULATORS_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'QR_AUTO_CONFIRM_ENABLED debe ser true o false.',
+  })
+  QR_AUTO_CONFIRM_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_AUTO_CONFIRM_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_AUTO_CONFIRM_SECONDS debe ser mayor que cero.' })
+  QR_AUTO_CONFIRM_SECONDS = 10;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_AUTO_CONFIRM_INTERVAL_SECONDS debe ser mayor que cero.' })
+  QR_AUTO_CONFIRM_INTERVAL_SECONDS = 2;
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'QR_EXPIRATION_JOB_ENABLED debe ser true o false.',
+  })
+  QR_EXPIRATION_JOB_ENABLED?: 'true' | 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_EXPIRATION_JOB_INTERVAL_SECONDS debe ser un entero.' })
+  @Min(1, { message: 'QR_EXPIRATION_JOB_INTERVAL_SECONDS debe ser mayor que cero.' })
+  QR_EXPIRATION_JOB_INTERVAL_SECONDS = 30;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'QR_EXPIRATION_MINUTES debe ser un entero.' })
+  @Min(1, { message: 'QR_EXPIRATION_MINUTES debe ser mayor que cero.' })
+  QR_EXPIRATION_MINUTES = 15;
 
   @IsOptional()
   @IsIn(['mailpit', 'resend'], {
@@ -45,6 +94,13 @@ class EnvironmentVariables {
   JWT_SECRET!: string;
 
   @IsOptional()
+  @IsString({ message: 'CREDENTIALS_ENCRYPTION_KEY debe ser una cadena.' })
+  @Matches(/^[a-fA-F0-9]{64}$/, {
+    message: 'CREDENTIALS_ENCRYPTION_KEY debe contener 64 caracteres hexadecimales (32 bytes).',
+  })
+  CREDENTIALS_ENCRYPTION_KEY?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(60)
@@ -61,6 +117,24 @@ class EnvironmentVariables {
   @IsInt({ message: 'PRISMA_TX_MAX_WAIT_MS debe ser un entero.' })
   @Min(1, { message: 'PRISMA_TX_MAX_WAIT_MS debe ser mayor que cero.' })
   PRISMA_TX_MAX_WAIT_MS = 2000;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_HOST debe ser una cadena.' })
+  REDIS_HOST = 'localhost';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_PORT debe ser un entero.' })
+  REDIS_PORT = 6379;
+
+  @IsOptional()
+  @IsString({ message: 'REDIS_PASSWORD debe ser una cadena.' })
+  REDIS_PASSWORD?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_DB debe ser un entero.' })
+  REDIS_DB = 0;
 }
 
 export function validateEnvironment(
@@ -76,6 +150,10 @@ export function validateEnvironment(
       Object.values(error.constraints ?? {}),
     );
     throw new Error(`Configuración de entorno inválida: ${messages.join(' ')}`);
+  }
+
+  if (environment.NODE_ENV === 'production' && !environment.CREDENTIALS_ENCRYPTION_KEY) {
+    throw new Error('Configuración de entorno inválida: CREDENTIALS_ENCRYPTION_KEY es obligatoria en producción.');
   }
 
   return environment;

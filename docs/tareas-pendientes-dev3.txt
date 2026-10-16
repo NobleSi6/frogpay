@@ -1,0 +1,117 @@
+FROGPAY - TAREAS DEV 3 PENDIENTES - SPRINT 2
+Fecha de revision: 2026-10-03
+Rama revisada: feature/back2-jean-s2
+
+Este documento cubre las tareas asignadas directamente a Dev 3. Distingue el
+trabajo ya presente en la rama de lo que falta para cumplir cada DoD.
+
+
+TSK-DEV3-200 - CORRECCIONES DEL PR DE IDENTIDAD Y TENANTS (ARRASTRE)
+Estado: PARCIALMENTE IMPLEMENTADA; FALTA CERRAR Y VERIFICAR EL DoD.
+
+Ya presente en la rama:
+- API Keys de Owner/Admin obtienen el tenant del contexto autenticado.
+- El tenant indicado en la ruta solo se usa para PLATFORM_ADMIN.
+- Notifications consume tenant.creado y envia la invitacion; no depende del
+  caso de uso de creacion del tenant.
+- Jest resuelve imports relativos .js hacia fuentes TypeScript mediante
+  moduleNameMapper en apps/api/jest.config.cjs.
+- npm test --workspace=@frogpay/api -- --runInBand pasa: 19 suites y 68 tests.
+- npm run build --workspace=@frogpay/api pasa.
+
+Pendiente:
+- Integrar develop en la rama de trabajo y resolver conflictos conservando
+  todos los servicios definidos en docker-compose.yml.
+- Mantener una sola configuracion de Jest.
+- Confirmar que develop no reintroduzca conflictos en la configuracion de Jest.
+- Volver a ejecutar las pruebas y el build despues de integrar develop.
+- Solicitar revision y merge del PR a develop.
+
+Criterio de cierre:
+- Un solo Jest config; npm test y npm run build pasan; API Keys y envio de
+  invitaciones cumplen las reglas anteriores; PR aprobado y mezclado.
+
+
+TSK-DEV3-201 - POST /v1/payments CON IDEMPOTENCY-KEY
+Estado: PENDIENTE; el modulo Payments aun no contiene el caso de uso de pagos.
+
+Implementar:
+- Autenticar la API Key y derivar tenant y ambiente de esa clave; no aceptar
+  esos valores del cuerpo de la solicitud.
+- Validar monto, moneda, metodo de pago, referencia del comercio y token de
+  pago pm_... recibido desde Stripe Elements.
+- Reclamar en Redis la clave idempotency:<tenant_id>:<key> de forma atomica,
+  guardar el hash canonico del cuerpo y establecer el TTL de 24 horas.
+- Si la misma clave esta PROCESSING, responder 409. Si la clave se reutiliza
+  con otro hash, responder 422. Si ya termino y el hash coincide, devolver la
+  misma respuesta HTTP y cuerpo sin crear otro pago ni repetir el cobro.
+- Persistir payment pending, payment_status_history y pago.creado en
+  domain_event_outbox dentro de una transaccion de base de datos.
+- Invocar al proveedor mediante PaymentProviderPort fuera de la transaccion
+  de base de datos; despues persistir approved/rejected, historial y evento
+  correspondiente en una nueva transaccion.
+- Actualizar tenant_plan_usage sin contabilizar dos veces los reintentos y
+  rechazar el pago cuando se exceda el limite del plan.
+- Guardar la respuesta idempotente por 24 horas y liberar/recuperar el estado
+  PROCESSING de forma definida ante errores y timeouts del proveedor.
+- No importar el SDK de Stripe desde el modulo Payments.
+
+Pruebas requeridas:
+- Repetir la misma solicitud y clave devuelve la misma respuesta y crea un
+  solo pago.
+- Solicitudes concurrentes con la misma clave producen un solo procesamiento;
+  la solicitud que encuentra el procesamiento activo responde 409.
+- Misma clave con cuerpo distinto responde 422.
+- Pago aprobado/rechazado persiste historial y eventos outbox correctamente.
+- Limite de plan, timeout y error del proveedor no dejan una clave bloqueada
+  indefinidamente ni generan cobros duplicados.
+
+
+TSK-DEV3-202 - CREDENCIALES STRIPE SANDBOX/PRODUCCION POR TENANT
+Estado: IMPLEMENTADA Y VERIFICADA EN CODIGO (100%); LISTA PARA CONSUMO.
+
+Ya presente en la rama:
+- GET y PUT /api/tenants/me/providers/stripe/credentials/:environment.
+- Acceso restringido al Owner y tenant derivado de la sesion autenticada.
+- Cifrado AES-256-GCM y persistencia de credenciales por tenant, proveedor y
+  ambiente usando el contexto RLS.
+- La clave secreta no se devuelve completa; se validan prefijos test/live.
+- Documentacion completa en Swagger con DTOs de respuesta (@ApiResponse/@ApiOperation).
+- Metodo interno getDecrypted implementado para consumo seguro del StripeAdapter.
+- Suite de pruebas unitarias cubriendo servicio, controlador y algoritmo de cifrado.
+- CREDENTIALS_ENCRYPTION_KEY documentada en .env.example y configurada en .env local.
+
+
+TSK-DEV3-203 - BFF DEL DASHBOARD: PAGO DE PRUEBA Y DETALLE
+Estado: PENDIENTE; depende del caso de uso de pagos de TSK-DEV3-201.
+
+Implementar:
+- POST /dashboard/payments/test autenticado con sesion JWT de Owner.
+- Forzar ambiente sandbox en el backend y reutilizar el caso de uso comun de
+  creacion de pago; aceptar el token pm_... de Stripe Elements, nunca PAN/CVV
+  ni el API Secret del tenant desde el navegador.
+- GET /dashboard/payments/:id con comprobacion de que el pago pertenece al
+  tenant de la sesion.
+- El detalle debe devolver estado, monto, moneda, comision, neto, metodo,
+  ambiente, referencia del comercio, fechas e historial de estados.
+- Documentar los endpoints en Swagger y consumirlos desde las pantallas del
+  dashboard.
+
+Pruebas requeridas:
+- Owner solo consulta y crea pagos de prueba de su propio tenant.
+- El endpoint de prueba siempre crea pagos sandbox.
+- No se puede consultar un pago de otro tenant.
+- El detalle incluye el historial ordenado y los montos esperados.
+
+
+ORDEN RECOMENDADO
+1. Cerrar TSK-DEV3-200: integrar develop y resolver el gate de Jest.
+2. Completar pruebas de integracion de TSK-DEV3-202 con CREDENTIALS_ENCRYPTION_KEY.
+3. Implementar TSK-DEV3-201 junto con el puerto/adaptador de proveedor.
+4. Implementar TSK-DEV3-203 sobre el caso de uso de pagos ya disponible.
+
+NOTA DE DEPENDENCIAS
+La implementacion del PaymentProviderPort y StripeAdapter esta compartida con
+Arquitectura en TSK-ARQ/DEV3-203. El contrato de pagos/eventos tambien es una
+tarea compartida en TSK-ARQ/DEV3-202; debe acordarse antes de cerrar el
+contrato publico de TSK-DEV3-201.

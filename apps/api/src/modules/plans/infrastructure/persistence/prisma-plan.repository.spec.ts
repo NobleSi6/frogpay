@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/index.js';
 import { PrismaPlanRepository } from './prisma-plan.repository.js';
 

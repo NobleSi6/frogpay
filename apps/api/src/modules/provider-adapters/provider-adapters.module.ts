@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { AdapterEventProbe } from './infrastructure/events/adapter-event-probe';
-import { StripePaymentProviderAdapter } from './adapters/stripe/stripe-payment-provider.adapter';
-import {
-  STRIPE_ADAPTER_CODE,
-  stripeClientProvider,
-} from './adapters/stripe/stripe-client.provider';
+import { StripeCredentialsController } from './presentation/http/stripe-credentials.controller';
+import { StripeCredentialsService } from './application/stripe-credentials.service';
+import { CredentialsEncryptionService } from './infrastructure/credentials/credentials-encryption.service';
+import { BankTransferLocalAdapter } from './adapters/bank-transfer/bank-transfer.adapter';
+import type { PaymentProviderPort } from './ports/payment-provider.port';
+import { stripeClientProvider } from './adapters/stripe/stripe-client.provider';
 import {
   resolveStripeProviderConfig,
   STRIPE_PROVIDER_CONFIG,
@@ -15,22 +16,29 @@ import { PAYMENT_PROVIDER_PORT } from './ports/payment-provider.port';
 import {
   DEFAULT_PAYMENT_PROVIDER_BINDINGS,
   parsePaymentProviderBindings,
+  PaymentProviderRegistration,
 } from './registry/payment-provider.binding';
 import { PaymentProviderRegistry } from './registry/payment-provider.registry';
+import {
+  PAYMENT_PROVIDER_ADAPTERS,
+  PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+} from './provider-adapters.config';
+import { CircuitBreakerModule } from './resilience/circuit-breaker.module';
+import { CircuitBreakerRegistry } from './resilience/circuit-breaker.registry';
 
 /**
- * Módulo de integraciones con proveedores de pago.
- *
- * Exporta solo el contrato (el puerto) y el registry. Nada específico de Stripe
- * sale de aquí: `payments` resuelve el adaptador por método de pago y no sabe
- * qué proveedor hay detrás (RF-16).
+ * Proveedores disponibles y credenciales de Stripe administradas por tenant.
+ * Payments selecciona el adaptador usando PaymentProviderRegistry.
  */
 @Module({
-  imports: [EventBusModule],
+  imports: [EventBusModule, CircuitBreakerModule],
+  controllers: [StripeCredentialsController],
   providers: [
     AdapterEventProbe,
+    StripeCredentialsService,
+    CredentialsEncryptionService,
+    ...PAYMENT_PROVIDER_ADAPTERS,
     {
-      // Se resuelve al arrancar: si falta STRIPE_SECRET_KEY, la API no levanta.
       provide: STRIPE_PROVIDER_CONFIG,
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
@@ -44,32 +52,51 @@ import { PaymentProviderRegistry } from './registry/payment-provider.registry';
         }),
     },
     stripeClientProvider,
-    StripePaymentProviderAdapter,
     {
       provide: PAYMENT_PROVIDER_PORT,
-      useExisting: StripePaymentProviderAdapter,
+      useExisting: PAYMENT_PROVIDER_ADAPTERS[0],
+    },
+    {
+      provide: PAYMENT_PROVIDER_ADAPTERS_TOKEN,
+      inject: [...PAYMENT_PROVIDER_ADAPTERS],
+      useFactory: (...adapters: PaymentProviderPort[]): PaymentProviderRegistration[] =>
+        adapters.map((adapter) => ({
+          adapterCode: adapter.metadata.id,
+          adapter,
+        })),
     },
     {
       provide: PaymentProviderRegistry,
-      inject: [ConfigService, StripePaymentProviderAdapter],
+      inject: [ConfigService, PAYMENT_PROVIDER_ADAPTERS_TOKEN, CircuitBreakerRegistry],
       useFactory: (
         config: ConfigService,
-        stripeAdapter: StripePaymentProviderAdapter,
+        registrations: PaymentProviderRegistration[],
+        breakers: CircuitBreakerRegistry,
       ): PaymentProviderRegistry => {
+        // Cada adaptador se registra envuelto en su propio circuito (TSK-DEV2-304).
         const registry = new PaymentProviderRegistry(
-          [{ adapterCode: STRIPE_ADAPTER_CODE, adapter: stripeAdapter }],
+          registrations.map((registration) => ({
+            adapterCode: registration.adapterCode,
+            adapter: breakers.protect(registration.adapterCode, registration.adapter),
+          })),
           DEFAULT_PAYMENT_PROVIDER_BINDINGS,
         );
-
         const override = config.get<string>('PAYMENT_PROVIDER_BINDINGS')?.trim();
         if (override) {
           registry.applyBindings(parsePaymentProviderBindings(override), true);
         }
-
         return registry;
       },
     },
   ],
-  exports: [AdapterEventProbe, PAYMENT_PROVIDER_PORT, PaymentProviderRegistry],
+  exports: [
+    AdapterEventProbe,
+    StripeCredentialsService,
+    CredentialsEncryptionService,
+    PAYMENT_PROVIDER_PORT,
+    PaymentProviderRegistry,
+    BankTransferLocalAdapter,
+    CircuitBreakerModule,
+  ],
 })
 export class ProviderAdaptersModule {}
