@@ -66,13 +66,77 @@ El método `bank_transfer` no requiere token de tarjeta ni credenciales bancaria
 **Endpoint:** `GET /v1/payments/:id`
 **Autenticación:** API Key del tenant (`X-Api-Key`).
 
-Devuelve el estado actual, las instrucciones bancarias (si aplica), la referencia y el historial de transiciones.
+La URL local completa incluye el prefijo global `/api`: `GET /api/v1/payments/:id`.
+El tenant y el ambiente se derivan de la API Key; no se aceptan como parámetros.
+Un pago inexistente o perteneciente a otro tenant responde `404` para no revelar
+su existencia.
+
+### Respuesta `200 OK`
+
+Devuelve el contrato de `PaymentDetailsResponseDto`: todos los campos de la
+respuesta de creación más el historial de transiciones, en orden cronológico
+(antiguas primero). `expiresAt`, `bankInstructions` y `qrPayload` son `null` o
+se omiten cuando no aplican; los datos de QR o de transferencia solo se
+devuelven mientras el pago esté pendiente.
+
+```json
+{
+  "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+  "status": "pending",
+  "amount": "150.00",
+  "currency": "BOB",
+  "paymentMethod": "bank_transfer",
+  "environment": "sandbox",
+  "merchantReference": "ORDEN-1001",
+  "commissionAmount": null,
+  "netAmount": null,
+  "providerTransactionId": "BT-2026-A81F92",
+  "errorCode": null,
+  "expiresAt": "2026-10-12T20:00:00.000Z",
+  "bankInstructions": {
+    "bankName": "Banco FrogPay Simulado",
+    "accountNumber": "10000012345",
+    "accountHolder": "FrogPay Bolivia",
+    "amount": "150.00",
+    "currency": "BOB",
+    "reference": "BT-2026-A81F92"
+  },
+  "qrPayload": null,
+  "createdAt": "2026-10-11T19:00:00.000Z",
+  "updatedAt": "2026-10-11T19:00:00.000Z",
+  "statusHistory": [
+    {
+      "previousStatus": null,
+      "newStatus": "pending",
+      "metadata": {},
+      "createdAt": "2026-10-11T19:00:00.000Z"
+    }
+  ]
+}
+```
+
+`amount`, `commissionAmount` y `netAmount` son cadenas decimales; las fechas
+son ISO 8601 en UTC. `metadata` no debe contener PAN, CVC, credenciales ni
+secretos del proveedor.
+
+| HTTP | Código | Condición |
+|---|---|---|
+| `200` | — | Pago visible para el tenant de la API Key. |
+| `400` | `validation_error` | `id` no es un UUID válido. |
+| `401` | `missing_api_key` / `invalid_api_key` | API Key ausente, inválida o revocada. |
+| `404` | — | Pago inexistente o de otro tenant. |
+
+El detalle del Dashboard puede añadir `webhookDeliveries`; ese campo pertenece
+al contrato BFF de [dashboard.md](dashboard.md), no a este endpoint público.
 
 ### Estados posibles:
-- `pending`: Esperando la confirmación o depósito bancario.
-- `approved`: Depósito o cobro confirmado exitosamente.
-- `rejected`: Rechazado por vencimiento (`transfer_expired`), monto incorrecto (`amount_mismatch`) o rechazo de tarjeta.
-- `failed`: Error técnico o indisponibilidad del proveedor.
+- `pending`: esperando confirmación, depósito o vencimiento.
+- `approved`: cobro o depósito confirmado.
+- `rejected`: rechazo del proveedor o regla de negocio; consultar `errorCode`.
+- `failed`: error técnico o indisponibilidad del proveedor.
+- `expired`, `refunded` y `partially_refunded`: estados admitidos por el modelo
+  de persistencia; los endpoints de reembolso y expiración deben documentar
+  cuándo se habiliten para cada método.
 
 ---
 

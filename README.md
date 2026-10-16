@@ -53,6 +53,11 @@ Mailpit ofrece la bandeja local en `http://localhost:8025`.
 ## Documentación de arquitectura
 - [Diagramas C4 (Contexto, Contenedores y Componentes)](docs/c4/README.md)
 - [Decisiones de arquitectura (ADRs)](docs/adr/README.md)
+- [Contrato de pagos](docs/api/pagos.md)
+- [Contratos del Dashboard y administración](docs/api/dashboard.md)
+- [Catálogo de errores](docs/api/errores.md)
+- [Eventos, Outbox y consumidor de Auditoría](docs/eventos.md)
+- [Observabilidad: métricas, logs y alertas](docs/observabilidad.md)
 - [Pruebas manuales de transferencia y conciliación bancaria](docs/PRUEBAS-MANUALES-CONCILIACION-BANCARIA.md)
 - [Estado de tareas de Sprint 3](docs/ESTADO-TAREAS-SPRINT3.md)
 
