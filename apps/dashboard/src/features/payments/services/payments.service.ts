@@ -8,14 +8,21 @@ export interface CreatePaymentInput {
   idempotencyKey: string;
 }
 
-export type PaymentStatus = 'APPROVED' | 'REJECTED' | 'FAILED' | 'PENDING';
+export interface CreateQrPaymentInput {
+  amount: number;
+  currency: string;
+  idempotencyKey: string;
+}
+
+export type PaymentStatus = 'APPROVED' | 'REJECTED' | 'FAILED' | 'PENDING' | 'EXPIRED';
+export type PaymentMethodType = 'card' | 'qr' | 'bank_transfer';
 
 export interface PaymentResponse {
   id: string;
-  status: 'pending' | 'approved' | 'rejected' | 'failed';
+  status: 'pending' | 'approved' | 'rejected' | 'failed' | 'expired';
   amount: string;
   currency: string;
-  paymentMethod: string;
+  paymentMethod: PaymentMethodType;
   environment: 'sandbox' | 'production';
   merchantReference: string;
   commissionAmount: string | null;
@@ -26,18 +33,25 @@ export interface PaymentResponse {
   updatedAt: string;
 }
 
+export interface QrPaymentResponse extends PaymentResponse {
+  qrPayload?: string | null;
+  expiresAt?: string | null;
+}
+
 export interface PaymentDetail {
   id: string;
   amount: number;
   currency: string;
   fee: number;
   net: number;
-  paymentMethod: string;
+  paymentMethod: PaymentMethodType;
   environment: PaymentEnvironment;
   merchantReference: string;
   status: PaymentStatus;
   errorCode: string | null;
   createdAt: string;
+  qrPayload?: string;
+  expiresAt?: string;
   timeline: Array<{
     status: string;
     timestamp: string;
@@ -46,6 +60,8 @@ export interface PaymentDetail {
 }
 
 interface PaymentDetailsResponse extends PaymentResponse {
+  qrPayload?: string;
+  expiresAt?: string;
   statusHistory: Array<{
     previousStatus: string | null;
     newStatus: string;
@@ -55,6 +71,7 @@ interface PaymentDetailsResponse extends PaymentResponse {
 }
 
 export const paymentsService = {
+  // Pago con Tarjeta (Sprint 2)
   createPayment: async (data: CreatePaymentInput): Promise<PaymentResponse> => {
     if (!Number.isFinite(data.amount) || data.amount <= 0) {
       throw new Error('El monto debe ser un número mayor a cero.');
@@ -73,6 +90,39 @@ export const paymentsService = {
     });
   },
 
+  // Pago con QR (Sprint 3 - TSK-DEV1-302)
+  createQrPayment: async (data: CreateQrPaymentInput): Promise<QrPaymentResponse> => {
+    if (!Number.isFinite(data.amount) || data.amount <= 0) {
+      throw new Error('El monto debe ser un número mayor a cero.');
+    }
+
+    return apiRequest<QrPaymentResponse>('/dashboard/payments/test', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': data.idempotencyKey },
+      body: JSON.stringify({
+        amount: data.amount.toFixed(2),
+        currency: data.currency,
+        paymentMethod: 'qr',
+        merchantReference: `DASH-QR-${data.idempotencyKey}`,
+      }),
+    });
+  },
+
+  // Simulación de Pago QR en Sandbox (dashboard BFF)
+  simulateQrPayment: async (
+    paymentId: string,
+    result: 'APPROVED' | 'FAILED',
+  ): Promise<{ paymentId: string; status: string; changed: boolean }> => {
+    return apiRequest<{ paymentId: string; status: string; changed: boolean }>(
+      `/dashboard/payments/${encodeURIComponent(paymentId)}/simulate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ result }),
+      },
+    );
+  },
+
+  // Obtener Detalle de Pago por ID (Compatible con Tarjeta y QR)
   getPaymentById: async (id: string): Promise<PaymentDetail> => {
     const payment = await apiRequest<PaymentDetailsResponse>(
       `/dashboard/payments/${encodeURIComponent(id)}`,
@@ -80,11 +130,12 @@ export const paymentsService = {
     const amount = Number(payment.amount);
     const fee = Number(payment.commissionAmount ?? 0);
     const normalizedStatus = payment.status.toUpperCase();
-    const status: PaymentStatus = normalizedStatus === 'APPROVED'
-      || normalizedStatus === 'REJECTED'
-      || normalizedStatus === 'FAILED'
-      ? normalizedStatus
-      : 'PENDING';
+    
+    let status: PaymentStatus = 'PENDING';
+    if (['APPROVED', 'REJECTED', 'FAILED', 'EXPIRED'].includes(normalizedStatus)) {
+      status = normalizedStatus as PaymentStatus;
+    }
+
     const statusHistory = payment.statusHistory ?? [];
 
     return {
@@ -98,6 +149,8 @@ export const paymentsService = {
       merchantReference: payment.merchantReference,
       status,
       errorCode: payment.errorCode,
+      qrPayload: payment.qrPayload,
+      expiresAt: payment.expiresAt,
       createdAt: new Date(payment.createdAt).toLocaleString('es-BO', {
         dateStyle: 'medium',
         timeStyle: 'short',

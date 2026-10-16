@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import {
   Card,
@@ -11,12 +12,17 @@ import {
   CardAction,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Landmark, Smartphone, AlertTriangle, Lock } from 'lucide-react';
+import { CreditCard, Landmark, QrCode, AlertTriangle, Lock } from 'lucide-react';
 import { useAuthSession } from '@/features/auth/auth-session';
+
+type PaymentMethodType = 'card' | 'transfer' | 'qr';
 
 export default function PagosPage() {
   const session = useAuthSession();
   const businessName = session?.user.tenant?.name?.trim() || 'tu negocio';
+  
+  // Estado para controlar el método seleccionado (por defecto 'card')
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('card');
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -57,10 +63,21 @@ export default function PagosPage() {
           {/* Opciones de Métodos de Pago */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            {/* Opción 1: Tarjeta (Habilitada / Activa) */}
-            <div className="rounded-xl border-2 border-emerald-500 bg-emerald-50/5 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md">
+            {/* Opción 1: Tarjeta */}
+            <div
+              onClick={() => setSelectedMethod('card')}
+              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
+                selectedMethod === 'card'
+                  ? 'border-emerald-500 bg-emerald-50/10'
+                  : 'border-border bg-card opacity-80 hover:opacity-100'
+              }`}
+            >
               <div className="space-y-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  selectedMethod === 'card'
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div>
@@ -71,16 +88,34 @@ export default function PagosPage() {
                 </div>
               </div>
               <Link href="/dashboard/pagos/nuevo" className="w-full mt-6">
-                <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium">
+                <Button 
+                  className={`w-full font-medium ${
+                    selectedMethod === 'card'
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      : 'variant-outline'
+                  }`}
+                  variant={selectedMethod === 'card' ? 'default' : 'outline'}
+                >
                   Tarjeta
                 </Button>
               </Link>
             </div>
 
             {/* Opción 2: Transferencia Bancaria */}
-            <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between opacity-80 hover:opacity-100 transition-all">
+            <div
+              onClick={() => setSelectedMethod('transfer')}
+              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
+                selectedMethod === 'transfer'
+                  ? 'border-emerald-500 bg-emerald-50/10'
+                  : 'border-border bg-card opacity-80 hover:opacity-100'
+              }`}
+            >
               <div className="space-y-3">
-                <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  selectedMethod === 'transfer'
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
                   <Landmark className="h-5 w-5" />
                 </div>
                 <div>
@@ -90,27 +125,56 @@ export default function PagosPage() {
                   </p>
                 </div>
               </div>
-              <Button variant="outline" disabled className="w-full mt-6">
-                Transferencia
-              </Button>
+              <Link href="/dashboard/pagos/transferencia" className="w-full mt-6">
+                <Button 
+                  className={`w-full font-medium ${
+                    selectedMethod === 'transfer'
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      : ''
+                  }`}
+                  variant={selectedMethod === 'transfer' ? 'default' : 'outline'}
+                >
+                  Transferencia
+                </Button>
+              </Link>
             </div>
 
-            {/* Opción 3: Billetera Móvil */}
-            <div className="rounded-xl border border-border bg-card p-5 flex flex-col justify-between opacity-80 hover:opacity-100 transition-all">
+            {/* Opción 3: Pago con QR */}
+            <div
+              onClick={() => setSelectedMethod('qr')}
+              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
+                selectedMethod === 'qr'
+                  ? 'border-emerald-500 bg-emerald-50/10'
+                  : 'border-border bg-card opacity-80 hover:opacity-100'
+              }`}
+            >
               <div className="space-y-3">
-                <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
-                  <Smartphone className="h-5 w-5" />
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  selectedMethod === 'qr'
+                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-muted text-muted-foreground'
+                }`}>
+                  <QrCode className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-base text-foreground">Billetera móvil</h3>
+                  <h3 className="font-semibold text-base text-foreground">Pago con QR</h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Elige una billetera móvil como método de pago.
+                    Genera un código QR para probar un pago en Sandbox.
                   </p>
                 </div>
               </div>
-              <Button variant="outline" disabled className="w-full mt-6">
-                Billetera móvil
-              </Button>
+              <Link href="/dashboard/pagos/qr" className="w-full mt-6">
+                <Button 
+                  className={`w-full font-medium ${
+                    selectedMethod === 'qr'
+                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                      : ''
+                  }`}
+                  variant={selectedMethod === 'qr' ? 'default' : 'outline'}
+                >
+                  Generar pago con QR
+                </Button>
+              </Link>
             </div>
 
           </div>
