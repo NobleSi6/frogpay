@@ -3,12 +3,18 @@ import {
   Logger,
   OnModuleDestroy,
   OnModuleInit,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  context,
+  propagation,
+} from '@opentelemetry/api';
 import * as amqp from 'amqplib';
 import { DomainEvent } from '../domain/domain-event.base';
 import { EventHandler, IEventBus } from './event-bus.interface';
+import { MetricsService } from '../../modules/observability/metrics.service';
 
 const EVENTS_EXCHANGE = 'frogpay.events';
 const DEAD_LETTER_EXCHANGE = 'frogpay.events.dlx';
@@ -21,10 +27,14 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
   private connection?: amqp.ChannelModel;
   private channel?: amqp.ConfirmChannel;
   private connectionPromise?: Promise<void>;
+  private dlqMetricsTimer?: ReturnType<typeof setInterval>;
   private readonly pendingRegistrations: Promise<void>[] = [];
   private readonly subscriptions: Array<{ eventName: string; handler: EventHandler<unknown> }> = [];
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     try {
@@ -35,6 +45,7 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.dlqMetricsTimer) clearInterval(this.dlqMetricsTimer);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
   }
@@ -43,13 +54,28 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
     await Promise.all(this.pendingRegistrations);
     const channel = await this.ensureChannel();
     const body = Buffer.from(JSON.stringify(event));
-    channel.publish(EVENTS_EXCHANGE, event.eventName, body, {
-      contentType: 'application/json',
-      deliveryMode: 2,
-      messageId: event.eventId,
-      timestamp: Math.floor(event.occurredOn.getTime() / 1000),
-      type: event.eventName,
-    });
+    const traceHeaders: Record<string, string> = {};
+
+    propagation.inject(
+      context.active(),
+      traceHeaders,
+    );
+
+    channel.publish(
+      EVENTS_EXCHANGE,
+      event.eventName,
+      body,
+      {
+        contentType: 'application/json',
+        deliveryMode: 2,
+        messageId: event.eventId,
+        timestamp: Math.floor(
+          event.occurredOn.getTime() / 1000,
+        ),
+        type: event.eventName,
+        headers: traceHeaders,
+      },
+    );
     await channel.waitForConfirms();
     this.logger.log(`Evento ${event.eventName} publicado (id=${event.eventId})`);
   }
@@ -142,6 +168,7 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
     for (const subscription of this.subscriptions) {
       await this.registerSubscription(channel, subscription);
     }
+    this.startDlqMetricsCollection();
     this.logger.log(`Conectado a RabbitMQ (${EVENTS_EXCHANGE})`);
   }
 
@@ -177,6 +204,45 @@ export class RabbitMqEventBus implements IEventBus, OnModuleInit, OnModuleDestro
     const explicitName = handler.queueName;
     const safeEventName = eventName.replace(/[^a-zA-Z0-9_.-]/g, '_');
     return explicitName || `frogpay.api.${safeEventName}`;
+  }
+
+  private startDlqMetricsCollection(): void {
+    if (!this.metrics || this.dlqMetricsTimer) return;
+    void this.refreshDlqMetrics();
+    this.dlqMetricsTimer = setInterval(
+      () => void this.refreshDlqMetrics(),
+      15_000,
+    );
+    this.dlqMetricsTimer.unref?.();
+  }
+
+  private async refreshDlqMetrics(): Promise<void> {
+    const channel = this.channel;
+    if (!this.metrics || !channel) return;
+
+    try {
+      const queueNames = [
+        ...new Set(
+          this.subscriptions.map(
+            (subscription) =>
+              `${this.queueName(
+                subscription.handler,
+                subscription.eventName,
+              )}.dead`,
+          ),
+        ),
+      ];
+
+      const queues = await Promise.all(
+        queueNames.map((name) => channel.checkQueue(name)),
+      );
+      const total = queues.reduce((sum, queue) => sum + queue.messageCount, 0);
+      this.metrics.setDlqMessages('frogpay.events.dlq', total);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron consultar las DLQ del event bus: ${this.errorMessage(error)}`,
+      );
+    }
   }
 
   private errorMessage(error: unknown): string {

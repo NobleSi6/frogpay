@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ObservabilityModule } from '../observability/observability.module';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { ProviderAdaptersModule } from '../provider-adapters/provider-adapters.module';
 import { CacheModule } from '../../shared/cache/cache.module';
@@ -21,7 +22,7 @@ import { ProviderRetryWorker } from './application/workers/provider-retry.worker
 import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.queue';
 
 @Module({
-  imports: [EventBusModule, ProviderAdaptersModule, CacheModule],
+  imports: [EventBusModule, ProviderAdaptersModule, CacheModule, ObservabilityModule],
   controllers: [
     PaymentsController,
     DashboardPaymentsController,

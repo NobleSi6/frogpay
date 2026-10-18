@@ -6,10 +6,15 @@ import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './shared/http/http-exception.filter';
 import { RequestIdMiddleware } from './shared/http/middleware/request-id.middleware';
 import { TimingInterceptor } from './shared/http/timing.interceptor';
+import { StructuredLoggerService } from './modules/observability/structured-logger.service';
 
 async function bootstrap() {
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+  });
+  const structuredLogger = app.get(StructuredLoggerService);
+  app.useLogger(structuredLogger);
   const logger = new Logger('FrogPay-API');
-  const app = await NestFactory.create(AppModule);
   const requestIdMiddleware = new RequestIdMiddleware();
   app.use(requestIdMiddleware.use.bind(requestIdMiddleware));
   app.enableShutdownHooks();
@@ -25,9 +30,9 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Prefijo global de API excluyendo /health
+  // Prefijo global de API excluyendo /health y /metrics
   app.setGlobalPrefix('api', {
-    exclude: ['health'],
+    exclude: ['health', 'metrics'],
   });
 
   // Interceptores y Filtros globales

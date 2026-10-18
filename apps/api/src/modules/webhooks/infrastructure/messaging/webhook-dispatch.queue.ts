@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
+import { MetricsService } from '../../../observability/metrics.service';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../../domain/retry-policy';
 
 /**
@@ -43,10 +44,15 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
   private channel?: amqp.ConfirmChannel;
   private connecting?: Promise<amqp.ConfirmChannel>;
   private handler?: (message: WebhookDispatchMessage) => Promise<void>;
+  private dlqMetricsTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {}
 
   async onModuleDestroy(): Promise<void> {
+    if (this.dlqMetricsTimer) clearInterval(this.dlqMetricsTimer);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
   }
@@ -71,6 +77,7 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
       contentType: 'application/json',
     });
     await channel.waitForConfirms();
+    await this.refreshDlqMetrics();
   }
 
   /** Registra el worker; si la conexión se cae, se vuelve a suscribir al reconectar. */
@@ -127,6 +134,7 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
 
     await channel.assertQueue(WEBHOOK_DISPATCH_QUEUE, { durable: true });
     await channel.assertQueue(WEBHOOK_DLQ, { durable: true });
+    this.startDlqMetricsCollection();
     for (const delay of WEBHOOK_RETRY_DELAYS_MS) {
       await channel.assertQueue(retryQueueName(delay), {
         durable: true,
@@ -147,5 +155,27 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
     this.channel = channel;
     if (this.handler) await this.startConsumer(channel);
     return channel;
+  }
+
+  private startDlqMetricsCollection(): void {
+    if (!this.metrics || this.dlqMetricsTimer) return;
+    void this.refreshDlqMetrics();
+    this.dlqMetricsTimer = setInterval(
+      () => void this.refreshDlqMetrics(),
+      15_000,
+    );
+    this.dlqMetricsTimer.unref?.();
+  }
+
+  private async refreshDlqMetrics(): Promise<void> {
+    if (!this.metrics || !this.channel) return;
+    try {
+      const queue = await this.channel.checkQueue(WEBHOOK_DLQ);
+      this.metrics.setDlqMessages(WEBHOOK_DLQ, queue.messageCount);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo consultar la DLQ ${WEBHOOK_DLQ}: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+    }
   }
 }

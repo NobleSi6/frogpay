@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { MetricsService } from '../../../observability/metrics.service';
 import { isSuccessfulStatus, nextRetryDelayMs, WEBHOOK_MAX_ATTEMPTS } from '../../domain/retry-policy';
 import { buildSignatureHeader, SIGNATURE_HEADER } from '../../domain/webhook-signature';
 import { WebhookHttpClient } from '../../infrastructure/http/webhook-http.client';
@@ -25,6 +26,7 @@ export class DeliverWebhookUseCase {
     private readonly http: WebhookHttpClient,
     private readonly queue: WebhookDispatchQueue,
     @Inject(WEBHOOK_SECRET_CIPHER) private readonly cipher: WebhookSecretCipher,
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
 
   async execute(message: WebhookDispatchMessage): Promise<DeliverOutcome> {
@@ -45,6 +47,7 @@ export class DeliverWebhookUseCase {
         { ...base, responseCode: null, error: 'El endpoint está desactivado o fue eliminado', durationMs: 0, succeeded: false },
         { kind: 'failed' },
       );
+      this.metrics?.recordWebhookDelivery('failed');
       return 'failed';
     }
 
@@ -70,6 +73,7 @@ export class DeliverWebhookUseCase {
 
     if (succeeded) {
       await this.deliveries.recordAttempt(attempt, { kind: 'delivered' });
+      this.metrics?.recordWebhookDelivery('delivered');
       this.logger.log(`Webhook ${delivery.id} entregado en el intento ${message.attempt} (HTTP ${result.status})`);
       return 'delivered';
     }
@@ -78,6 +82,7 @@ export class DeliverWebhookUseCase {
     if (delay !== null && message.attempt < WEBHOOK_MAX_ATTEMPTS) {
       await this.deliveries.recordAttempt(attempt, { kind: 'retry', nextRetryAt: new Date(Date.now() + delay) });
       await this.queue.enqueue({ deliveryId: delivery.id, attempt: message.attempt + 1 }, delay);
+      this.metrics?.recordWebhookDelivery('retry');
       this.logger.warn(`Webhook ${delivery.id} falló (intento ${message.attempt}): ${error}. Reintento en ${delay / 1000} s`);
       return 'retry_scheduled';
     }
@@ -93,6 +98,7 @@ export class DeliverWebhookUseCase {
       lastError: error,
       failedAt: new Date().toISOString(),
     });
+    this.metrics?.recordWebhookDelivery('failed');
     this.logger.error(`Webhook ${delivery.id} enviado a la DLQ tras ${message.attempt} intentos: ${error}`);
     return 'failed';
   }

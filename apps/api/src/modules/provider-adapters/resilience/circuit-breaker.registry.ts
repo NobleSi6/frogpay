@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MetricsService } from '../../observability/metrics.service';
 import { PaymentProviderPort } from '../ports/payment-provider.port';
 import {
   CircuitBreaker,
@@ -23,6 +24,7 @@ export class CircuitBreakerRegistry {
   constructor(
     config: ConfigService,
     @Optional() private readonly faults?: ProviderFaultInjector,
+    @Optional() private readonly metrics?: MetricsService,
   ) {
     this.options = {
       failureRateThreshold: readNumber(config, 'CIRCUIT_BREAKER_FAILURE_RATE', DEFAULT_CIRCUIT_BREAKER_OPTIONS.failureRateThreshold),
@@ -34,7 +36,12 @@ export class CircuitBreakerRegistry {
 
   /** Envuelve un adaptador con su circuito. Úsalo al registrar cada adaptador en el ProviderRegistry. */
   protect(providerCode: string, adapter: PaymentProviderPort): PaymentProviderPort {
-    return new CircuitBreakerPaymentProvider(adapter, this.get(providerCode), this.faults);
+    return new CircuitBreakerPaymentProvider(
+      adapter,
+      this.get(providerCode),
+      this.faults,
+      this.metrics,
+    );
   }
 
   get(providerCode: string): CircuitBreaker {
@@ -42,11 +49,13 @@ export class CircuitBreakerRegistry {
     let breaker = this.breakers.get(key);
     if (!breaker) {
       breaker = new CircuitBreaker(key, this.options, Date.now, (name, from, to, snapshot) => {
+        this.metrics?.setCircuitState(name, to);
         const message = `Circuito ${name}: ${from} -> ${to} (fallos ${Math.round(snapshot.failureRate * 100)}% en ${snapshot.requestsInWindow} solicitudes)`;
         if (to === 'OPEN') this.logger.error(message);
         else this.logger.warn(message);
       });
       this.breakers.set(key, breaker);
+      this.metrics?.setCircuitState(key, 'CLOSED');
     }
     return breaker;
   }

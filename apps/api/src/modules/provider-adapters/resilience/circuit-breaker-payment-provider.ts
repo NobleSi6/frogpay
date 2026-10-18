@@ -6,6 +6,7 @@ import {
   ProviderResult,
   QueryStatusInput,
 } from '../ports/payment-provider.port';
+import { MetricsService } from '../../observability/metrics.service';
 import { CircuitBreaker } from './circuit-breaker';
 import { PROVIDER_CALL_TIMEOUT_MS, ProviderFaultInjector } from './provider-fault-injector';
 
@@ -29,6 +30,7 @@ export class CircuitBreakerPaymentProvider implements PaymentProviderPort {
     private readonly inner: PaymentProviderPort,
     readonly breaker: CircuitBreaker,
     private readonly faults?: ProviderFaultInjector,
+    private readonly metrics?: MetricsService,
   ) {}
 
   /** Los metadatos (métodos, comisiones, modo) son los del adaptador original. */
@@ -49,13 +51,18 @@ export class CircuitBreakerPaymentProvider implements PaymentProviderPort {
   }
 
   private async call(operation: () => Promise<ProviderResult>): Promise<ProviderResult> {
-    if (!this.breaker.tryAcquire()) return { ...PROVIDER_UNAVAILABLE_RESULT };
+    if (!this.breaker.tryAcquire()) {
+      this.metrics?.recordProviderCall(this.breaker.name, 'unavailable');
+      return { ...PROVIDER_UNAVAILABLE_RESULT };
+    }
     try {
       const result = await this.withSimulatedFault(operation);
+      this.metrics?.recordProviderCall(this.breaker.name, result.outcome);
       if (result.outcome === 'timeout' || result.outcome === 'error') this.breaker.recordFailure();
       else this.breaker.recordSuccess();
       return result;
     } catch (error) {
+      this.metrics?.recordProviderCall(this.breaker.name, 'error');
       this.breaker.recordFailure();
       throw error;
     }
