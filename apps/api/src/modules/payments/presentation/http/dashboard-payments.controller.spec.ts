@@ -68,6 +68,7 @@ describe('DashboardPaymentsController', () => {
     ...sampleResponse,
     qrPayload: null,
     bankInstructions: null,
+    expiresAt: null,
     transitions: [
       {
         from: null,
