@@ -56,6 +56,8 @@ async function bootstrap() {
     .addBearerAuth()
     .addTag('Tenants', 'Operaciones de gestión y onboarding de empresas')
     .addTag('Health', 'Sondas de salud y monitoreo del sistema')
+    .addTag('Auditoría', 'Consulta y verificación de registros inmutables')
+    .addTag('Dashboard - Métricas', 'Indicadores de negocio por tenant')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

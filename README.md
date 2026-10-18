@@ -55,6 +55,8 @@ Mailpit ofrece la bandeja local en `http://localhost:8025`.
 - [Decisiones de arquitectura (ADRs)](docs/adr/README.md)
 - [Pruebas manuales de transferencia y conciliación bancaria](docs/PRUEBAS-MANUALES-CONCILIACION-BANCARIA.md)
 - [Estado de tareas de Sprint 3](docs/ESTADO-TAREAS-SPRINT3.md)
+- [Manual de usuario](docs/MANUAL-USUARIO.md)
+- [Auditoría, integridad y retención](docs/AUDITORIA-Y-RETENCION.md)
 
 ## Reglas globales
 

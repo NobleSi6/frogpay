@@ -19,6 +19,7 @@ import { PlansModule } from './modules/plans/plans.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SimulatorsModule } from './modules/simulators/simulators.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { AuditModule } from './modules/audit/audit.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     DashboardModule,
     SimulatorsModule,
     WebhooksModule,
+    AuditModule,
   ],
   providers: [
     EventBusSmokePublisher,
