@@ -6,6 +6,7 @@ import { PaymentEventProbe } from './infrastructure/events/payment-event-probe';
 import { IdempotencyService } from './infrastructure/idempotency/idempotency.service';
 import { CreatePaymentUseCase } from './application/use-cases/create-payment.use-case';
 import { GetPaymentUseCase } from './application/use-cases/get-payment.use-case';
+import { ListPaymentsUseCase } from './application/use-cases/list-payments.use-case';
 import { BankReconciliationService } from './application/services/bank-reconciliation.service';
 import { BankTransferExpirationService } from './application/services/bank-transfer-expiration.service';
 import { PaymentSettlementService } from './application/use-cases/payment-settlement.service';
@@ -33,6 +34,7 @@ import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.qu
     IdempotencyService,
     CreatePaymentUseCase,
     GetPaymentUseCase,
+    ListPaymentsUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
     PaymentSettlementService,
@@ -49,6 +51,7 @@ import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.qu
     IdempotencyService,
     CreatePaymentUseCase,
     GetPaymentUseCase,
+    ListPaymentsUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
     PaymentSettlementService,

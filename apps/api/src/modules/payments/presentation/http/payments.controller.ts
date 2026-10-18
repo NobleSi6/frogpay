@@ -27,7 +27,7 @@ import { CreatePaymentUseCase } from '../../application/use-cases/create-payment
 import { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
 import { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import { PaymentResponseDto } from '../../application/dto/payment-response.dto';
-import { PaymentDetailsResponseDto } from '../../application/dto/payment-details.dto';
+import { GetPaymentResponseDto } from '../../application/dto/get-payment-response.dto';
 import { PaymentErrorResponseDto } from '../../application/dto/payment-error.dto';
 
 @ApiTags('Pagos Públicos (API)')
@@ -119,11 +119,15 @@ export class PaymentsController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Consultar el estado de un pago por ID (HU-09, RF-12)',
+    summary: 'Consultar el estado de un pago por ID (HU-09, RF-12 - TSK-DEV1-401)',
     description:
-      'Obtiene el estado actual y detalles de un pago perteneciente al tenant de la API Key.',
+      'Devuelve el estado actual, montos, comisiones, detalles de instrucción (solo en pending) e historial de transiciones del pago perteneciente al tenant de la API Key.',
   })
-  @ApiParam({ name: 'id', description: 'UUID del pago' })
+  @ApiParam({
+    name: 'id',
+    description: 'UUID identificador único del pago',
+    example: '8a2d8a64-d1ea-4f73-b9fe-64c507ed7391',
+  })
   @ApiHeader({
     name: 'X-Api-Key',
     description: 'API Key del comercio',
@@ -132,17 +136,27 @@ export class PaymentsController {
   @ApiResponse({
     status: 200,
     description: 'Pago encontrado exitosamente.',
-    type: PaymentDetailsResponseDto,
+    type: GetPaymentResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El ID del pago debe ser un UUID válido.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'API Key faltante, inválida o revocada.',
+    type: PaymentErrorResponseDto,
   })
   @ApiResponse({
     status: 404,
-    description: 'Pago no encontrado o perteneciente a otro tenant.',
+    description: 'Pago no encontrado o perteneciente a otro tenant (aislamiento estricto).',
     type: PaymentErrorResponseDto,
   })
   async getById(
     @CurrentApiKeyContext() apiKeyContext: ApiKeyContext,
     @Param('id') paymentId: string,
-  ): Promise<PaymentDetailsResponseDto> {
+  ): Promise<GetPaymentResponseDto> {
     if (!isUUID(paymentId)) {
       throw new BadRequestException({
         code: 'validation_error',
