@@ -66,6 +66,8 @@ describe('DashboardPaymentsController', () => {
 
   const sampleGetPaymentResponse: GetPaymentResponseDto = {
     ...sampleResponse,
+    qrPayload: null,
+    bankInstructions: null,
     transitions: [
       {
         from: null,
