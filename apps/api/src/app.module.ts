@@ -21,6 +21,7 @@ import { SimulatorsModule } from './modules/simulators/simulators.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { PlatformStatusModule } from './modules/platform-status/platform-status.module';
+import { SecurityModule } from './shared/security/security.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { PlatformStatusModule } from './modules/platform-status/platform-status.
     WebhooksModule,
     ObservabilityModule,
     PlatformStatusModule,
+    SecurityModule,
   ],
   providers: [
     EventBusSmokePublisher,

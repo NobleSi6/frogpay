@@ -12,6 +12,7 @@ export const AdapterErrorCode = {
   IDEMPOTENCY_KEY_REUSED: ERROR_CATALOG.idempotency_key_reused.code,
   DEPOSIT_ID_REUSED: ERROR_CATALOG.deposit_id_reused.code,
   PLAN_LIMIT_EXCEEDED: ERROR_CATALOG.plan_limit_exceeded.code,
+  RATE_LIMIT_EXCEEDED: ERROR_CATALOG.rate_limit_exceeded.code,
   CARD_DECLINED: ERROR_CATALOG.card_declined.code,
   INSUFFICIENT_FUNDS: ERROR_CATALOG.insufficient_funds.code,
   EXPIRED_CARD: ERROR_CATALOG.expired_card.code,

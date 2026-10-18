@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from './shared/http/http-exception.filter';
 import { RequestIdMiddleware } from './shared/http/middleware/request-id.middleware';
 import { TimingInterceptor } from './shared/http/timing.interceptor';
 import { StructuredLoggerService } from './modules/observability/structured-logger.service';
+import { applySecurity } from './shared/security/security.setup';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -23,12 +24,7 @@ async function bootstrap() {
   const port = configService.get<number>('port', 4000);
   const corsOrigin = configService.get<string>('corsOrigin', 'http://localhost:3000');
 
-  // CORS
-  app.enableCors({
-    origin: corsOrigin,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-  });
+  applySecurity(app, corsOrigin);
 
   // Prefijo global de API excluyendo /health y /metrics
   app.setGlobalPrefix('api', {
@@ -44,6 +40,7 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,
