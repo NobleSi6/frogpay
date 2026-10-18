@@ -89,6 +89,7 @@ export class GetPaymentUseCase {
         merchantReference: payment.merchant_reference ?? '',
         commissionAmount: payment.commission_amount ? String(payment.commission_amount) : null,
         netAmount: payment.net_amount ? String(payment.net_amount) : null,
+        providerTransactionId: payment.provider_transaction_id ?? null,
         errorCode: payment.error_code ?? null,
         // Solo disponibles mientras el pago esté pendiente
         qrPayload: isPending ? (payment.qr_payload ?? null) : null,
