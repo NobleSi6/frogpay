@@ -98,6 +98,13 @@ export class GetPaymentResponseDto {
   netAmount!: string | null;
 
   @ApiProperty({
+    example: 'pi_3Nk000000000000000000000',
+    nullable: true,
+    description: 'ID de la transacción devuelto por la pasarela externa o referencia generada',
+  })
+  providerTransactionId!: string | null;
+
+  @ApiProperty({
     example: 'sandbox',
     enum: ['sandbox', 'production'],
     description: 'Ambiente en el que se procesó el pago',
