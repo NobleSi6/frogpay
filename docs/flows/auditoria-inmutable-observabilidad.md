@@ -43,18 +43,27 @@ sequenceDiagram
         Audit->>MQ: Se recupera y consume mensaje pendiente
         MQ-->>Audit: Reentrega evento con correlación
     end
-    Audit->>DB: Comprueba si eventId ya fue registrado
-    alt Evento duplicado
-        DB-->>Audit: eventId ya existe
-        Audit-->>MQ: ACK sin duplicar el registro
-    else Evento nuevo
-        DB-->>Audit: eventId no existe
-        Audit->>DB: Lee previousHash del tenant
-        DB-->>Audit: previousHash
-        Audit->>Audit: Calcula SHA-256 encadenado
-        Audit->>DB: INSERT en audit_log (evento, previousHash, hash)
-        DB-->>Audit: Registro guardado
-        Audit-->>MQ: ACK
+    rect rgb(235, 245, 255)
+        Note over Audit, DB: Transacción de auditoría, serializada por tenant
+        Audit->>DB: BEGIN
+        Audit->>DB: Adquiere bloqueo de escritura para el tenant
+        Audit->>DB: Comprueba si eventId ya fue registrado
+        alt Evento duplicado
+            DB-->>Audit: eventId ya existe
+            Audit->>DB: COMMIT
+            DB-->>Audit: Commit confirmado
+            Audit-->>MQ: ACK sin duplicar el registro
+        else Evento nuevo
+            DB-->>Audit: eventId no existe
+            Audit->>DB: Lee el último record_hash del tenant (previousHash)
+            DB-->>Audit: previousHash
+            Audit->>Audit: Calcula SHA-256 encadenado
+            Audit->>DB: INSERT en audit_log (evento, previousHash, hash)
+            DB-->>Audit: Registro insertado
+            Audit->>DB: COMMIT
+            DB-->>Audit: Commit confirmado
+            Audit-->>MQ: ACK
+        end
     end
 
     Note over MQ, Comercio: 3. Entrega de webhook y observabilidad
@@ -67,7 +76,6 @@ sequenceDiagram
         API-->>Prom: Solicitudes y latencia
         Outbox-->>Prom: Pendientes y antigüedad
         MQ-->>Prom: Mensajes y DLQ
-        Audit-->>Prom: Consumo, errores y reintentos
         Webhook-->>Prom: Entregas exitosas y fallidas
     and Alertas
         Prom->>Prom: Evalúa métricas y umbrales
@@ -89,8 +97,6 @@ sequenceDiagram
         API-->>Admin: 200 OK (valid: true, recordsChecked, verifiedAt)
     else Ruptura detectada
         API-->>Admin: 200 OK (valid: false, firstBrokenEventId, firstBrokenAt)
-        API-->>Prom: Reporta ruptura de integridad
-        Prom-->>Admin: Envía alerta de integridad
     end
 ```
 
@@ -102,8 +108,11 @@ sequenceDiagram
   misma transacción.
 - `requestId` y `traceparent` se propagan desde la API hasta el consumidor y el
   webhook; el `trace_id` identifica la traza W3C contenida en `traceparent`.
-- El consumidor de auditoría evita duplicados por `eventId` y enlaza cada
-  registro al hash anterior del tenant.
+- El consumidor de auditoría serializa las escrituras con un bloqueo por
+  tenant. Dentro de la misma transacción comprueba `eventId`, lee el
+  `previousHash` del tenant e inserta el registro; solo confirma el mensaje a
+  RabbitMQ después del `COMMIT`. Los duplicados también se confirman sin crear
+  otra fila.
 - La verificación informa si la cadena es válida y, si no, identifica el primer
-  evento afectado; una ruptura es resultado de verificación y no impide que la
-  solicitud responda `200 OK`.
+  evento afectado; una ruptura se devuelve como resultado de verificación y no
+  impide que la solicitud responda `200 OK`.
