@@ -22,6 +22,9 @@
 
 **`GET /dashboard/payments`** — `OWNER`.
 
+Implementado en el BFF del API: deriva el tenant del JWT y devuelve pagos
+paginados con los filtros documentados abajo.
+
 Query params combinables:
 
 | Parámetro | Tipo | Regla |
