@@ -10,7 +10,9 @@
 - El Dashboard usa sesión JWT. Los endpoints de tenant derivan `tenantId` del
   JWT y nunca lo aceptan en body, query ni ruta.
 - Los endpoints de tenant definidos en este contrato requieren rol `OWNER`.
-  Las rutas `/admin/*` son exclusivas de `PLATFORM_ADMIN`.
+  Las rutas `/admin/*` requieren `PLATFORM_ADMIN`, excepto
+  `/admin/platform-status`, que también admite el rol de solo lectura
+  `PLATFORM_OBSERVER`.
 - Fechas de entrada/salida en ISO 8601 UTC; montos como cadenas decimales.
 - La paginación comienza en `page=1`, `limit=25`; `limit` máximo `100`.
 - Colecciones responden `{ "data": [], "page": 1, "limit": 25,
@@ -68,33 +70,86 @@ sensibles. Un pago ajeno o inexistente responde `404`.
 
 **`GET /dashboard/metrics?days=7&environment=production`** — `OWNER`.
 
-`days` acepta `7` o `30`; `environment` acepta `production` o `sandbox` y es
+`days` acepta `6` o `30`; `environment` acepta `production` o `sandbox` y es
 obligatorio. Un cliente que presenta métricas reales debe solicitar
 `production`; el sandbox nunca se mezcla con producción. La ventana usa fechas
-UTC con `from` inclusivo y `to` exclusivo; `days=7` cubre los siete días
-calendario completos anteriores a hoy. Para el MVP, `currency` siempre es
-`BOB`. Respuesta:
+UTC, incluye el día actual y empieza `days - 1` días antes. `from` es inclusivo
+y `to` exclusivo, por lo que `to` corresponde al día siguiente al actual.
+`dailySeries` contiene exactamente un elemento por cada día del intervalo,
+ordenados de más antiguo a más reciente; los días sin actividad se completan
+con contadores e importes en cero. Para el MVP, `currency` siempre es `BOB`.
+Respuesta de ejemplo para `days=7`:
 
 ```json
 {
-  "from": "2026-10-09",
+  "from": "2026-10-10",
   "to": "2026-10-16",
   "environment": "production",
   "currency": "BOB",
-  "volume": "12500.00",
-  "transactionCount": 42,
-  "approvalRate": 0.9286,
-  "commissionAmount": "437.50",
-  "netAmount": "12062.50",
+  "volume": "2100.00",
+  "transactionCount": 8,
+  "approvalRate": 0.875,
+  "commissionAmount": "73.50",
+  "netAmount": "2026.50",
   "byMethod": [
     {
       "paymentMethod": "card",
-      "transactionCount": 30,
-      "approvedCount": 28,
-      "volume": "9000.00"
+      "transactionCount": 8,
+      "approvedCount": 7,
+      "volume": "2100.00"
     }
   ],
   "dailySeries": [
+    {
+      "date": "2026-10-10",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
+    },
+    {
+      "date": "2026-10-11",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
+    },
+    {
+      "date": "2026-10-12",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
+    },
+    {
+      "date": "2026-10-13",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
+    },
+    {
+      "date": "2026-10-14",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
+    },
     {
       "date": "2026-10-15",
       "transactionCount": 8,
@@ -104,6 +159,16 @@ calendario completos anteriores a hoy. Para el MVP, `currency` siempre es
       "failedCount": 0,
       "pendingCount": 0,
       "approvalRate": 0.875
+    },
+    {
+      "date": "2026-10-16",
+      "transactionCount": 0,
+      "volume": "0.00",
+      "approvedCount": 0,
+      "rejectedCount": 0,
+      "failedCount": 0,
+      "pendingCount": 0,
+      "approvalRate": 0
     }
   ],
   "generatedAt": "2026-10-16T10:15:00.000Z"
@@ -119,7 +184,7 @@ calendario completos anteriores a hoy. Para el MVP, `currency` siempre es
 | `commissionAmount`, `netAmount` | decimal como string | Suma de `commission_amount` y `net_amount` de esos mismos pagos exitosos. |
 | `approvalRate` | decimal entre 0 y 1 | Pagos exitosos (`approved`, `refunded`, `partially_refunded`) dividido entre pagos con resultado terminal. Excluye `pending`; si no hay resultados terminales, vale `0`. |
 | `byMethod` | arreglo | Agregados por método: intentos creados, pagos exitosos y volumen bruto exitoso. |
-| `dailySeries` | arreglo | Los mismos contadores e importes agrupados por día UTC de `created_at`; incluye `approvedCount`, `rejectedCount`, `failedCount`, `pendingCount` y tasa de aprobación diaria. |
+| `dailySeries` | arreglo | Exactamente un objeto por cada día UTC del rango, también para días sin pagos; incluye `approvedCount`, `rejectedCount`, `failedCount`, `pendingCount` y tasa de aprobación diaria. |
 
 Para la tasa, el denominador terminal incluye `approved`, `rejected`, `failed`,
 `expired`, `refunded` y `partially_refunded`; `rejectedCount` cuenta solo el
@@ -131,9 +196,9 @@ la tasa es `0`.
 Cachear la respuesta por 5 minutos, con clave que incluya tenant, rango y
 ambiente ([ADR-012](../adr/0012-metricas-agregadas.md), propuesto), y mantener
 aislamiento por tenant y ambiente. Los agregados deben concordar con el cálculo
-manual sobre el seed y responder con p95 menor a 300 ms. Estas son métricas de
-negocio; latencia HTTP, errores, circuitos, outbox y DLQ son métricas
-operacionales de Prometheus y se especifican en
+manual sobre el seed y responder con p95 menor a 300 ms tanto con caché fría
+como caliente. Estas son métricas de negocio; latencia HTTP, errores, circuitos,
+outbox y DLQ son métricas operacionales de Prometheus y se especifican en
 [observabilidad.md](../observabilidad.md).
 
 ## Auditoría del tenant
@@ -150,35 +215,79 @@ expongan secretos. Este endpoint solo lista registros; no verifica la cadena.
 
 **`GET /admin/audit/verify?tenantId=<uuid>`** — solo `PLATFORM_ADMIN`.
 
-Verifica la cadena de hashes del tenant indicado y devuelve el resultado de la
-verificación, la cantidad de registros revisados y el primer evento con ruptura
-(si existe). Esta operación es independiente del listado `GET
-/dashboard/audit-logs` y no modifica registros.
+Verifica la cadena de hashes del tenant indicado y no modifica registros. Una
+cadena íntegra o rota es un resultado de verificación normal y responde `200`;
+si hay una ruptura, `firstBrokenEventId` y `firstBrokenAt` identifican el primer
+evento afectado. Si no hay ruptura, ambos campos son `null`.
+
+```json
+{
+  "tenantId": "9d4e1c2b-3a4f-5e6d-4a53-9d4e1c2b3a4f",
+  "valid": true,
+  "recordsChecked": 128,
+  "firstBrokenEventId": null,
+  "firstBrokenAt": null,
+  "verifiedAt": "2026-10-16T10:15:00.000Z"
+}
+```
+
+Errores: `400 validation_error` si `tenantId` falta o no es un UUID válido;
+`401 unauthorized` si falta o no es válida la sesión; `403 forbidden` si el
+rol no es `PLATFORM_ADMIN`; `404 not_found` si el tenant no existe; y
+`503 audit_verification_unavailable` si no se pudo completar la verificación.
+Los errores usan el formato estándar `{ code, message, details, requestId }`.
+Esta operación es independiente del listado
+`GET /dashboard/audit-logs`.
 
 ## Estado de plataforma
 
-**`GET /admin/platform-status`** — solo `PLATFORM_ADMIN`.
+**`GET /admin/platform-status`** — `PLATFORM_ADMIN` o `PLATFORM_OBSERVER`
+(rol de plataforma limitado, de solo lectura).
+
+Devuelve `200 OK` incluso cuando una o más dependencias estén degradadas o
+caídas: el estado reportado describe salud operacional, no disponibilidad HTTP
+del endpoint. `status` global es `operational` si todo está operativo,
+`degraded` si algún componente tiene fallos parciales o `down` si un componente
+crítico está caído. Cada dependencia informa su estado y latencia de la última
+comprobación; los circuitos reportan el porcentaje de fallos (valor entre 0 y
+100) y hora del último cambio. Los contadores de outbox, DLQ y entregas
+fallidas de webhook son agregados entre tenants. El rol `PLATFORM_OBSERVER`
+solo permite consultar este resumen: no puede acceder a datos de tenant,
+inspeccionar payloads ni ejecutar acciones administrativas. No se devuelven
+identificadores ni desglose por tenant.
 
 ```json
 {
   "generatedAt": "2026-10-16T10:15:00.000Z",
-  "dependencies": {
-    "database": "up",
-    "rabbitmq": "up",
-    "redis": "up"
-  },
-  "providerCircuits": [
-    { "provider": "stripe", "state": "closed" }
+  "status": "degraded",
+  "dependencies": [
+    { "name": "database", "status": "operational", "latencyMs": 12 },
+    { "name": "rabbitmq", "status": "degraded", "latencyMs": 240 },
+    { "name": "redis", "status": "operational", "latencyMs": 4 }
   ],
-  "outbox": { "pending": 0, "oldestPendingAt": null },
-  "deadLetterQueues": [{ "name": "frogpay.payments.dlq", "messages": 0 }],
-  "grafanaUrl": "http://localhost:3002"
+  "providerCircuits": [
+    {
+      "provider": "stripe",
+      "state": "closed",
+      "failurePercentage": 4.0,
+      "lastChangedAt": "2026-10-16T09:50:00.000Z"
+    }
+  ],
+  "outbox": { "pending": 3, "oldestPendingAt": "2026-10-16T10:12:00.000Z" },
+  "deadLetterQueues": {
+    "payments": { "messages": 2 },
+    "webhooks": { "messages": 1 }
+  },
+  "webhookDeliveries": { "failed": 4 }
 }
 ```
 
-Solo salud operacional agregada: no incluir secretos, payloads, datos de pago
-ni información de un tenant. Si Redis, RabbitMQ o PostgreSQL no puede
-consultarse, indicar `degraded` para esa dependencia sin filtrar credenciales.
+Los estados de dependencia usan `operational`, `degraded` o `down`. Una
+dependencia sin respuesta se marca `down` y su `latencyMs` es `null`; errores
+parciales se marcan `degraded`. Si no se puede obtener el estado de un
+componente, la API sigue respondiendo `200` e informa su estado como `down`.
+Solo se exponen conteos agregados: no incluir secretos, credenciales, payloads,
+datos de pago, `tenantId` ni conteos separados por tenant.
 
 ## Errores comunes
 
