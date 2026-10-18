@@ -164,3 +164,52 @@ La suite e2e completa (incluye los specs con mocks de health y dashboard) es
   (arma el sobre y lo inserta en `domain_event_outbox` en la misma transacción
   que el tenant). El publicador lo desenvuelve al publicar; ver "Excepción
   legada" al inicio de este documento.
+
+## Consumidor de Auditoría (Sprint 4)
+
+El consumidor `modules/audit` se suscribe a `pago.creado`, `pago.aprobado` y
+`pago.rechazado`. Cada evento produce como máximo una fila de auditoría por
+`eventId`; la base impone unicidad para esa clave. La escritura del registro y
+la actualización de la marca de idempotencia del consumidor se realizan en una
+misma transacción. RabbitMQ ofrece entrega *at-least-once*: un duplicado se
+reconoce y confirma sin insertar otra auditoría. Un fallo antes del commit se
+reintenta; los errores agotados siguen la política de reintentos/DLQ de la cola.
+
+También se auditan operaciones sensibles, sin valores secretos ni cuerpos de
+credenciales:
+
+| Operación | Evento | Datos permitidos en `payload` |
+|---|---|---|
+| API Key creada/revocada | `apikey.generada` / `apikey.revocada` | ID, prefijo, ambiente y actor. Nunca el secreto ni su hash. |
+| Credencial de proveedor creada/actualizada/revocada | `credencial.proveedor.actualizada` | ID de credencial, proveedor, ambiente y actor. Nunca claves ni ciphertext. |
+| Webhook creado/actualizado/eliminado | `webhook.creado` / `webhook.actualizado` / `webhook.eliminado` | ID, acción, ambiente y actor. Nunca el secreto; no incluir la URL completa. |
+
+Los nombres nuevos deben agregarse al catálogo de eventos compartido y
+publicarse en la misma transacción que la operación sensible. `apikey.generada`
+ya figura en el catálogo; los demás son parte del contrato de Sprint 4 y
+requieren implementación y pruebas.
+
+### Correlación distribuida
+
+`requestId` se acepta desde `X-Request-Id` o se genera en la API. Para que
+sobreviva al proceso HTTP y al publicador periódico, el outbox debe persistir
+`correlation_id` (el `requestId`) y `traceparent` (W3C Trace Context) junto a la
+fila. Al publicar, ambos viajan como headers AMQP; cada consumidor los restaura
+en el contexto de logs/trazas. Los trabajos sin request HTTP pueden llevar
+`correlation_id` nulo y crear una traza raíz.
+
+El esquema y `DomainEvent` actuales aún no contienen esos campos. Elias debe
+añadirlos con una migración aditiva y ajustar el publicador antes de que Laura
+consuma esta correlación. El `eventId` continúa siendo la clave de deduplicación;
+`requestId`/`traceparent` no sustituyen la identidad del evento. Ver
+[observabilidad](observabilidad.md).
+
+### Registro de auditoría
+
+El registro lógico por evento contiene `event_id`, `tenant_id`, entidad,
+acción, estado anterior y nuevo, actor, `request_id`, ambiente, fecha,
+`previous_hash` y `record_hash` SHA-256 encadenado por tenant. La tabla y sus
+restricciones de inmutabilidad se especifican en TSK-DEV3-401 y ADR-010.
+El modelo Prisma actual `audit_log` todavía no contiene todos esos campos; no
+debe considerarse cumplido el contrato hasta aplicar la migración y verificar
+RLS, permisos y trigger en PostgreSQL.

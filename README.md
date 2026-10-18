@@ -15,6 +15,7 @@ frogpay/
 ├── docs/
 │   ├── c4/               # Diagramas C4 nivel 1, 2 y 3 (TSK-ARQ-102)
 │   ├── adr/              # Architecture Decision Records (TSK-ARQ-103)
+│   ├── flows/            # Diagramas de secuencia y flujos de negocio
 │   └── erd/              # Modelo E-R exportado de Vertabelo (TSK-ARQ/DEVs-100)
 ├── infra/
 │   └── rabbitmq/         # definitions.json: exchanges, colas y DLQ precreadas
@@ -53,6 +54,12 @@ Mailpit ofrece la bandeja local en `http://localhost:8025`.
 ## Documentación de arquitectura
 - [Diagramas C4 (Contexto, Contenedores y Componentes)](docs/c4/README.md)
 - [Decisiones de arquitectura (ADRs)](docs/adr/README.md)
+- [Contrato de pagos](docs/api/pagos.md)
+- [Contratos del Dashboard y administración](docs/api/dashboard.md)
+- [Catálogo de errores](docs/api/errores.md)
+- [Eventos, Outbox y consumidor de Auditoría](docs/eventos.md)
+- [Flujo de auditoría inmutable y observabilidad (TSK-ARQ-401)](docs/flows/auditoria-inmutable-observabilidad.md)
+- [Observabilidad: métricas, logs y alertas](docs/observabilidad.md)
 - [Pruebas manuales de transferencia y conciliación bancaria](docs/PRUEBAS-MANUALES-CONCILIACION-BANCARIA.md)
 - [Estado de tareas de Sprint 3](docs/ESTADO-TAREAS-SPRINT3.md)
 

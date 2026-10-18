@@ -1,6 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-export type PaymentStatus = 'pending' | 'approved' | 'rejected' | 'failed';
+export type PaymentStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'failed'
+  | 'expired'
+  | 'refunded'
+  | 'partially_refunded';
 
 export class BankInstructionsDto {
   @ApiProperty({ example: 'Banco FrogPay Simulado' })
@@ -28,7 +35,15 @@ export class PaymentResponseDto {
 
   @ApiProperty({
     example: 'approved',
-    enum: ['pending', 'approved', 'rejected', 'failed'],
+    enum: [
+      'pending',
+      'approved',
+      'rejected',
+      'failed',
+      'expired',
+      'refunded',
+      'partially_refunded',
+    ],
     description: 'Estado actual del intento de pago',
   })
   status!: PaymentStatus;
