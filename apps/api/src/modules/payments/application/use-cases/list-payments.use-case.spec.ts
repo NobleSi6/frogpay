@@ -64,6 +64,9 @@ describe('ListPaymentsUseCase', () => {
     expect(result.data).toHaveLength(1);
     expect(result.data[0].id).toBe(mockPaymentRow.id);
     expect(result.data[0].paymentMethod).toBe('card');
+    expect((result.data[0] as any).qrPayload).toBeUndefined();
+    expect((result.data[0] as any).bankInstructions).toBeUndefined();
+    expect((result.data[0] as any).transitions).toBeUndefined();
 
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -129,6 +132,42 @@ describe('ListPaymentsUseCase', () => {
             { merchant_reference: { contains: searchUuid, mode: 'insensitive' } },
             { id: searchUuid },
           ],
+        }),
+      }),
+    );
+  });
+
+  it('propagates expired and refunded statuses to Prisma where clause', async () => {
+    await useCase.execute(tenantId, {
+      page: 1,
+      limit: 25,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+      status: 'expired',
+    });
+
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenant_id: tenantId,
+          status: 'expired',
+        }),
+      }),
+    );
+
+    await useCase.execute(tenantId, {
+      page: 1,
+      limit: 25,
+      sortBy: 'createdAt',
+      sortOrder: 'desc',
+      status: 'refunded',
+    });
+
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenant_id: tenantId,
+          status: 'refunded',
         }),
       }),
     );

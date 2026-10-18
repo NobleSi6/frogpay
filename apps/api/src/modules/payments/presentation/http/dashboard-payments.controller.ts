@@ -165,6 +165,16 @@ export class DashboardPaymentsController {
     type: PaymentErrorResponseDto,
   })
   @ApiResponse({
+    status: 401,
+    description: 'Sesión no autorizada o token JWT ausente.',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Rol insuficiente (requiere rol OWNER o ADMIN).',
+    type: PaymentErrorResponseDto,
+  })
+  @ApiResponse({
     status: 404,
     description: 'Pago no encontrado o de otro tenant.',
     type: PaymentErrorResponseDto,

@@ -57,6 +57,9 @@ describe('DashboardPaymentsController', () => {
     netAmount: '241.25',
     providerTransactionId: 'BT-2026-REF1',
     errorCode: null,
+    expiresAt: null,
+    bankInstructions: null,
+    qrPayload: null,
     createdAt: '2026-10-01T14:32:10.000Z',
     updatedAt: '2026-10-01T14:32:11.000Z',
   };

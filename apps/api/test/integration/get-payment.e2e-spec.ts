@@ -14,6 +14,8 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
   const tenantA = '550e8400-e29b-41d4-a716-446655440001';
   const tenantB = '550e8400-e29b-41d4-a716-446655440002';
   const paymentIdTenantA = '6f1b2e34-5678-40ab-8def-1234567890aa';
+  const paymentIdExpired = '6f1b2e34-5678-40ab-8def-1234567890bb';
+  const paymentIdRefunded = '6f1b2e34-5678-40ab-8def-1234567890cc';
   const paymentIdNonExistent = '6f1b2e34-5678-40ab-8def-1234567890ff';
 
   const validApiKeyTenantA = 'fp_test_tenantA.secret1234567890abcdef';
@@ -57,6 +59,78 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
           new_status: 'approved',
           metadata: { actor: 'webhook' },
           created_at: new Date('2026-10-11T19:05:00.000Z'),
+        },
+      ],
+    },
+    [`${paymentIdExpired}_${tenantA}`]: {
+      id: paymentIdExpired,
+      tenant_id: tenantA,
+      amount: '200.00',
+      currency: 'BOB',
+      status: 'expired',
+      environment: 'sandbox',
+      merchant_reference: 'ORDEN-EXPIRED-1002',
+      commission_amount: null,
+      net_amount: null,
+      provider_transaction_id: null,
+      error_code: null,
+      qr_payload: '0002010102126304A1B2',
+      bank_instructions: null,
+      expires_at: new Date('2026-10-12T20:00:00.000Z'),
+      created_at: new Date('2026-10-11T19:00:00.000Z'),
+      updated_at: new Date('2026-10-12T20:01:00.000Z'),
+      provider: { payment_method: { code: 'qr' } },
+      payment_status_history: [
+        {
+          previous_status: null,
+          new_status: 'pending',
+          metadata: { actor: 'system' },
+          created_at: new Date('2026-10-11T19:00:00.000Z'),
+        },
+        {
+          previous_status: 'pending',
+          new_status: 'expired',
+          metadata: { actor: 'system' },
+          created_at: new Date('2026-10-12T20:01:00.000Z'),
+        },
+      ],
+    },
+    [`${paymentIdRefunded}_${tenantA}`]: {
+      id: paymentIdRefunded,
+      tenant_id: tenantA,
+      amount: '300.00',
+      currency: 'BOB',
+      status: 'refunded',
+      environment: 'sandbox',
+      merchant_reference: 'ORDEN-REFUNDED-1003',
+      commission_amount: '3.00',
+      net_amount: '297.00',
+      provider_transaction_id: 'BT-REFUND-123',
+      error_code: null,
+      qr_payload: null,
+      bank_instructions: null,
+      expires_at: null,
+      created_at: new Date('2026-10-10T10:00:00.000Z'),
+      updated_at: new Date('2026-10-11T12:00:00.000Z'),
+      provider: { payment_method: { code: 'card' } },
+      payment_status_history: [
+        {
+          previous_status: null,
+          new_status: 'pending',
+          metadata: { actor: 'system' },
+          created_at: new Date('2026-10-10T10:00:00.000Z'),
+        },
+        {
+          previous_status: 'pending',
+          new_status: 'approved',
+          metadata: { actor: 'webhook' },
+          created_at: new Date('2026-10-10T10:02:00.000Z'),
+        },
+        {
+          previous_status: 'approved',
+          new_status: 'refunded',
+          metadata: { actor: 'user' },
+          created_at: new Date('2026-10-11T12:00:00.000Z'),
         },
       ],
     },
@@ -225,6 +299,42 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
         .get('/v1/payments/id-no-valido-123')
         .set('X-Api-Key', validApiKeyTenantA)
         .expect(400);
+    });
+  });
+
+  describe('Nuevos estados de pago (expired / refunded)', () => {
+    it('debe responder 200 OK cuando el pago tiene estado expired sin romper el serializado', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/v1/payments/${paymentIdExpired}`)
+        .set('X-Api-Key', validApiKeyTenantA)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        id: paymentIdExpired,
+        status: 'expired',
+        amount: '200.00',
+        currency: 'BOB',
+        paymentMethod: 'qr',
+        merchantReference: 'ORDEN-EXPIRED-1002',
+      });
+      expect(response.body.qrPayload).toBeNull();
+      expect(response.body.bankInstructions).toBeNull();
+    });
+
+    it('debe responder 200 OK cuando el pago tiene estado refunded sin romper el serializado', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/v1/payments/${paymentIdRefunded}`)
+        .set('X-Api-Key', validApiKeyTenantA)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        id: paymentIdRefunded,
+        status: 'refunded',
+        amount: '300.00',
+        currency: 'BOB',
+        paymentMethod: 'card',
+        merchantReference: 'ORDEN-REFUNDED-1003',
+      });
     });
   });
 });

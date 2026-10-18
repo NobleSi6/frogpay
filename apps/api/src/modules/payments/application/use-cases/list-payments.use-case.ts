@@ -96,7 +96,6 @@ export class ListPaymentsUseCase {
       ]);
 
       const data: PaymentResponseDto[] = payments.map((p) => {
-        const isPending = p.status === 'pending';
         return {
           id: p.id,
           status: p.status as PaymentStatus,
@@ -112,7 +111,6 @@ export class ListPaymentsUseCase {
           providerTransactionId: p.provider_transaction_id ?? null,
           errorCode: p.error_code ?? null,
           expiresAt: p.expires_at ? p.expires_at.toISOString() : null,
-          qrPayload: isPending ? (p.qr_payload ?? null) : null,
           createdAt: p.created_at.toISOString(),
           updatedAt: p.updated_at.toISOString(),
         };
