@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, CreditCard, KeyRound, LogOut, Webhook, Settings, Scale } from "lucide-react";
+import { Home, CreditCard, KeyRound, LogOut, ReceiptText, Webhook, Settings, Scale } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,18 @@ import { EnvironmentBadge, SandboxBanner } from "@/components/shared/environment
 import { setSession, useAuthSession } from "@/features/auth/auth-session";
 import { useTenantEnvironment } from "@/features/provider-credentials/environment-context";
 
-const links = [
+type NavItem = {
+  href: string;
+  label: string;
+  Icon: LucideIcon;
+  exact?: boolean;
+  nested?: boolean;
+};
+
+const links: NavItem[] = [
   { href: "/dashboard", label: "Inicio", Icon: Home, exact: true },
   { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, exact: true },
+  { href: "/dashboard/pagos/transacciones", label: "Transacciones", Icon: ReceiptText, exact: true, nested: true },
   { href: "/dashboard/pagos/conciliacion", label: "Conciliación", Icon: Scale, exact: false },
   { href: "/dashboard/api-keys", label: "API Keys", Icon: KeyRound, exact: false },
   { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook, exact: false },
@@ -37,7 +47,7 @@ export function TenantShell({ children }: { children: ReactNode }) {
           <BrandLogo className="h-auto w-full" priority />
         </Link>
         <nav aria-label="Tenant" className="flex flex-wrap gap-2 md:flex-col">
-          {links.map(({ href, label, Icon, exact }) => {
+          {links.map(({ href, label, Icon, exact, nested }) => {
             const active = exact 
               ? pathname === href 
               : pathname.startsWith(href);
@@ -48,7 +58,9 @@ export function TenantShell({ children }: { children: ReactNode }) {
                 href={href} 
                 aria-current={active ? "page" : undefined} 
                 className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring ${
-                  active ? "bg-primary text-primary-foreground" : "hover:bg-neutral-800"
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : `hover:bg-neutral-800 ${nested ? "text-neutral-300 pl-6 md:pl-11" : ""}`
                 }`}
               >
                 <Icon aria-hidden className="size-5" />
