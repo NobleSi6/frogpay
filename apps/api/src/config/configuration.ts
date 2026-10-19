@@ -9,6 +9,8 @@ export interface AppConfig {
   qrExpirationJobIntervalSeconds: number;
   port: number;
   corsOrigin: string;
+  rateLimitFreePerMinute: number;
+  rateLimitPremiumPerMinute: number;
   frontendUrl: string;
   databaseUrl: string;
   directUrl?: string;
@@ -51,6 +53,8 @@ export default (): AppConfig => ({
   ),
   port: parseInt(process.env.PORT || '4000', 10),
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  rateLimitFreePerMinute: parseInt(process.env.RATE_LIMIT_FREE_PER_MINUTE || '60', 10),
+  rateLimitPremiumPerMinute: parseInt(process.env.RATE_LIMIT_PREMIUM_PER_MINUTE || '600', 10),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
   directUrl: process.env.DIRECT_URL,

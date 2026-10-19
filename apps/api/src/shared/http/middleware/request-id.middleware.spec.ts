@@ -1,13 +1,18 @@
 import { NextFunction, Response } from 'express';
+import { currentRequestId } from '../../observability/request-context';
 import { RequestIdMiddleware, RequestWithId } from './request-id.middleware';
 
 describe('RequestIdMiddleware', () => {
   const middleware = new RequestIdMiddleware();
 
   it('preserves an existing x-request-id header', () => {
-    const request = { get: jest.fn().mockReturnValue('req_client_123') } as unknown as RequestWithId;
+    const request = {
+      get: jest.fn().mockReturnValue('req_client_123'),
+    } as unknown as RequestWithId;
     const response = {} as Response;
-    const next = jest.fn() as NextFunction;
+    const next = jest.fn(() => {
+      expect(currentRequestId()).toBe('req_client_123');
+    }) as NextFunction;
 
     middleware.use(request, response, next);
 
@@ -16,7 +21,9 @@ describe('RequestIdMiddleware', () => {
   });
 
   it('generates a UUID when x-request-id is missing', () => {
-    const request = { get: jest.fn().mockReturnValue(undefined) } as unknown as RequestWithId;
+    const request = {
+      get: jest.fn().mockReturnValue(undefined),
+    } as unknown as RequestWithId;
     const response = {} as Response;
     const next = jest.fn() as NextFunction;
 
