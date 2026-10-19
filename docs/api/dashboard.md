@@ -235,6 +235,12 @@ Errores: `400 validation_error` si `tenantId` falta o no es un UUID válido;
 `401 unauthorized` si falta o no es válida la sesión; `403 forbidden` si el
 rol no es `PLATFORM_ADMIN`; `404 not_found` si el tenant no existe; y
 `503 audit_verification_unavailable` si no se pudo completar la verificación.
+
+Si aparece ese 503, no significa que la cadena esté rota: significa que no pudo
+ser leída o recalculada. Verifica que `DIRECT_URL` use el rol administrador,
+ejecuta `npm exec -w apps/api -- prisma migrate deploy` y luego
+`npm run db:seed -w apps/api`. Una cadena alterada sí responde `200` con
+`valid: false` y los datos de la primera ruptura.
 Los errores usan el formato estándar `{ code, message, details, requestId }`.
 Esta operación es independiente del listado
 `GET /dashboard/audit-logs`.

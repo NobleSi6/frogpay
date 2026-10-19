@@ -32,6 +32,12 @@ export const ERROR_CATALOG = {
     message:
       'Superaste el límite de solicitudes por minuto de tu plan. Intenta de nuevo en unos segundos.',
   },
+  audit_verification_unavailable: {
+    code: 'audit_verification_unavailable',
+    httpStatus: 503,
+    message:
+      'No se pudo verificar la cadena de auditoría. Comprueba la conexión y las migraciones de la base de datos.',
+  },
   card_declined: {
     code: 'card_declined',
     message: 'El emisor rechazó el método de pago.',

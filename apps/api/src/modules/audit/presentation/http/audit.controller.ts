@@ -40,6 +40,20 @@ export class AuditController {
     status: 200,
     description: 'Resultado y primera ruptura encontrada.',
   })
+  @ApiResponse({
+    status: 503,
+    description:
+      'La verificación no pudo acceder a la cadena. Revisa la conexión y las migraciones.',
+    schema: {
+      example: {
+        code: 'audit_verification_unavailable',
+        message:
+          'No se pudo verificar la cadena de auditoría. Comprueba la conexión y las migraciones de la base de datos.',
+        details: null,
+        requestId: '8e9f...',
+      },
+    },
+  })
   verify(@Query() query: VerifyAuditQueryDto) {
     return this.audit.verify(query.tenantId);
   }

@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AuditVerificationUnavailableError } from './errors/audit-verification-unavailable-error';
 import { ERROR_CATALOG } from './errors/error-catalog';
 import { IdempotencyInProgressError } from './errors/idempotency-in-progress-error';
 import { IdempotencyKeyReusedError } from './errors/idempotency-key-reused-error';
@@ -34,6 +35,10 @@ describe('HttpExceptionFilter', () => {
   const filter = new HttpExceptionFilter();
 
   it.each([
+    [
+      new AuditVerificationUnavailableError(),
+      ERROR_CATALOG.audit_verification_unavailable,
+    ],
     [
       new ValidationError({ field: 'amount' }),
       ERROR_CATALOG.validation_error,

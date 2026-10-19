@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { AuditVerificationUnavailableError } from './errors/audit-verification-unavailable-error';
 import { ERROR_CATALOG } from './errors/error-catalog';
 import { IdempotencyInProgressError } from './errors/idempotency-in-progress-error';
 import { IdempotencyKeyReusedError } from './errors/idempotency-key-reused-error';
@@ -16,6 +17,7 @@ import { ValidationError } from './errors/validation-error';
 import { RequestWithId } from './middleware/request-id.middleware';
 
 type CatalogException =
+  | AuditVerificationUnavailableError
   | ValidationError
   | IdempotencyInProgressError
   | IdempotencyKeyReusedError
@@ -139,6 +141,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private isCatalogException(exception: unknown): exception is CatalogException {
     return (
       exception instanceof ValidationError ||
+      exception instanceof AuditVerificationUnavailableError ||
       exception instanceof IdempotencyInProgressError ||
       exception instanceof IdempotencyKeyReusedError ||
       exception instanceof PlanLimitExceededError

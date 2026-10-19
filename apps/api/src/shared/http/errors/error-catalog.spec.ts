@@ -4,6 +4,7 @@ describe('ERROR_CATALOG', () => {
   it('contains exactly the public catalog codes', () => {
     expect(Object.keys(ERROR_CATALOG).sort()).toEqual(
       [
+        'audit_verification_unavailable',
         'card_declined',
         'deposit_id_reused',
         'expired_card',
@@ -34,6 +35,7 @@ describe('ERROR_CATALOG', () => {
     expect(ERROR_CATALOG.idempotency_key_reused.httpStatus).toBe(422);
     expect(ERROR_CATALOG.deposit_id_reused.httpStatus).toBe(409);
     expect(ERROR_CATALOG.plan_limit_exceeded.httpStatus).toBe(429);
+    expect(ERROR_CATALOG.audit_verification_unavailable.httpStatus).toBe(503);
     expect(ERROR_CATALOG.card_declined).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.insufficient_funds).not.toHaveProperty('httpStatus');
     expect(ERROR_CATALOG.expired_card).not.toHaveProperty('httpStatus');

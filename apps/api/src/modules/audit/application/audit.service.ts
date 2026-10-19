@@ -1,13 +1,13 @@
 import {
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   PrismaTenantContextService,
   TenantTx,
 } from '../../../shared/database/prisma-tenant-context.service';
+import { AuditVerificationUnavailableError } from '../../../shared/http/errors/audit-verification-unavailable-error';
 import type { AppendAuditRecord, AuditActor } from './audit.types';
 
 const SENSITIVE_KEY =
@@ -206,9 +206,7 @@ export class AuditService {
       })
       .catch((error: unknown) => {
         if (error instanceof NotFoundException) throw error;
-        throw new ServiceUnavailableException(
-          'No se pudo verificar la cadena de auditoría',
-        );
+        throw new AuditVerificationUnavailableError();
       });
   }
 
