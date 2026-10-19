@@ -8,6 +8,11 @@ export const EventCatalog = {
   USUARIO_INVITADO: 'usuario.invitado',
   USUARIO_ACTIVADO: 'usuario.activado',
   APIKEY_GENERADA: 'apikey.generada',
+  APIKEY_REVOCADA: 'apikey.revocada',
+  CREDENCIAL_PROVEEDOR_ACTUALIZADA: 'credencial.proveedor.actualizada',
+  WEBHOOK_CREADO: 'webhook.creado',
+  WEBHOOK_ACTUALIZADO: 'webhook.actualizado',
+  WEBHOOK_ELIMINADO: 'webhook.eliminado',
   ARQUITECTURA_PRUEBA: 'arquitectura.prueba',
 
   // Dominio: Pagos
@@ -17,4 +22,4 @@ export const EventCatalog = {
   PAGO_REEMBOLSADO: 'pago.reembolsado',
 } as const;
 
-export type EventName = typeof EventCatalog[keyof typeof EventCatalog];
+export type EventName = (typeof EventCatalog)[keyof typeof EventCatalog];

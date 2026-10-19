@@ -63,7 +63,7 @@ services:
       - default
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.129.0
+    image: otel/opentelemetry-collector-contrib:0.129.1
     restart: unless-stopped
     profiles: ["observability"]
     command:

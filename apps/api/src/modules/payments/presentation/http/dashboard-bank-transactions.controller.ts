@@ -1,20 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiProperty,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsDateString,
-  IsIn,
-  IsInt,
-  IsOptional,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { Roles } from '../../../../shared/auth/roles.decorator';
 import { RolesGuard } from '../../../../shared/auth/roles.guard';
 import { CurrentTenantContext } from '../../../../shared/auth/current-tenant.decorator';
@@ -48,13 +35,7 @@ export class GetBankTransactionsQueryDto {
     ],
   })
   @IsOptional()
-  @IsIn([
-    'reconciled',
-    'amount_mismatch',
-    'currency_mismatch',
-    'unmatched',
-    'reference_not_found',
-  ])
+  @IsIn(['reconciled', 'amount_mismatch', 'currency_mismatch', 'unmatched', 'reference_not_found'])
   status?: string;
 
   @ApiProperty({ required: false, description: 'Fecha inicial (ISO 8601)' })
@@ -127,14 +108,13 @@ export class PaginatedBankTransactionsResponseDto {
 @ApiBearerAuth()
 @Controller('dashboard/bank-transactions')
 @UseGuards(RolesGuard)
-@Roles('OWNER', 'ADMIN')
+@Roles('OWNER', 'OPERATOR', 'VIEWER')
 export class DashboardBankTransactionsController {
   constructor(private readonly tenantContext: PrismaTenantContextService) {}
 
   @Get()
   @ApiOperation({
-    summary:
-      'Listar depósitos y transacciones bancarias para conciliación (TSK-BANK-304)',
+    summary: 'Listar depósitos y transacciones bancarias para conciliación (TSK-BANK-304)',
     description:
       'Devuelve los depósitos bancarios registrados para el tenant autenticado, con paginación y filtros por estado y fecha.',
   })
@@ -157,8 +137,7 @@ export class DashboardBankTransactionsController {
       };
 
       if (query.status) {
-        const mappedStatus =
-          query.status === 'reference_not_found' ? 'unmatched' : query.status;
+        const mappedStatus = query.status === 'reference_not_found' ? 'unmatched' : query.status;
         where.status = mappedStatus;
       }
 

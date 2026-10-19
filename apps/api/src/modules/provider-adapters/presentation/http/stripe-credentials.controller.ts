@@ -1,11 +1,34 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Optional,
+  Param,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
+import { randomUUID } from 'node:crypto';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import type { AuthenticatedTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import { Roles } from '../../../../shared/auth/roles.decorator';
 import { RolesGuard } from '../../../../shared/auth/roles.guard';
 import { StripeCredentialsService } from '../../application/stripe-credentials.service';
-import { StripeCredentialsDto, StripeCredentialsResponseDto } from '../dto/stripe-credentials.dto';
+import {
+  StripeCredentialsDto,
+  StripeCredentialsResponseDto,
+} from '../dto/stripe-credentials.dto';
+import { AuditService } from '../../../audit/application/audit.service';
+
+type RequestWithId = Request & { requestId?: string };
 
 @ApiTags('Credenciales de proveedores')
 @ApiBearerAuth()
@@ -13,14 +36,30 @@ import { StripeCredentialsDto, StripeCredentialsResponseDto } from '../dto/strip
 @UseGuards(RolesGuard)
 @Roles('OWNER')
 export class StripeCredentialsController {
-  constructor(private readonly credentials: StripeCredentialsService) {}
+  constructor(
+    private readonly credentials: StripeCredentialsService,
+    @Optional() private readonly audit?: AuditService,
+  ) {}
 
   @Get(':environment')
-  @ApiOperation({ summary: 'Consultar credenciales de Stripe del tenant actual' })
-  @ApiParam({ name: 'environment', enum: ['sandbox', 'production'], description: 'Ambiente de ejecución' })
-  @ApiResponse({ status: 200, description: 'Credenciales consultadas exitosamente', type: StripeCredentialsResponseDto })
+  @ApiOperation({
+    summary: 'Consultar credenciales de Stripe del tenant actual',
+  })
+  @ApiParam({
+    name: 'environment',
+    enum: ['sandbox', 'production'],
+    description: 'Ambiente de ejecución',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Credenciales consultadas exitosamente',
+    type: StripeCredentialsResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Ambiente inválido' })
-  @ApiResponse({ status: 403, description: 'Solo el OWNER puede consultar credenciales' })
+  @ApiResponse({
+    status: 403,
+    description: 'Solo el OWNER puede consultar credenciales',
+  })
   getCredentials(
     @CurrentTenantContext() context: AuthenticatedTenantContext,
     @Param('environment') environment: string,
@@ -29,16 +68,52 @@ export class StripeCredentialsController {
   }
 
   @Put(':environment')
-  @ApiOperation({ summary: 'Guardar o actualizar credenciales de Stripe para el tenant actual' })
-  @ApiParam({ name: 'environment', enum: ['sandbox', 'production'], description: 'Ambiente de ejecución' })
-  @ApiResponse({ status: 200, description: 'Credenciales guardadas y cifradas exitosamente', type: StripeCredentialsResponseDto })
-  @ApiResponse({ status: 400, description: 'Prefijo de claves inválido o ambiente inválido' })
-  @ApiResponse({ status: 403, description: 'Solo el OWNER puede guardar credenciales' })
-  saveCredentials(
+  @ApiOperation({
+    summary:
+      'Guardar o actualizar credenciales de Stripe para el tenant actual',
+  })
+  @ApiParam({
+    name: 'environment',
+    enum: ['sandbox', 'production'],
+    description: 'Ambiente de ejecución',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Credenciales guardadas y cifradas exitosamente',
+    type: StripeCredentialsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Prefijo de claves inválido o ambiente inválido',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Solo el OWNER puede guardar credenciales',
+  })
+  async saveCredentials(
     @CurrentTenantContext() context: AuthenticatedTenantContext,
     @Param('environment') environment: string,
     @Body() body: StripeCredentialsDto,
+    @Req() request?: RequestWithId,
   ) {
-    return this.credentials.save(context.tenantId, context.role, environment, body);
+    const result = await this.credentials.save(
+      context.tenantId,
+      context.role,
+      environment,
+      body,
+    );
+    await this.audit?.append({
+      eventId: randomUUID(),
+      tenantId: context.tenantId,
+      entity: 'provider_credential',
+      action: 'credencial.proveedor.actualizada',
+      actor: { type: 'user', id: context.userId, role: context.role },
+      actorUserId: context.userId,
+      requestId: request?.requestId,
+      environment: result.environment,
+      occurredAt: new Date(),
+      metadata: { provider: 'stripe' },
+    });
+    return result;
   }
 }

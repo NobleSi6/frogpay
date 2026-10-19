@@ -19,6 +19,7 @@ import { PlansModule } from './modules/plans/plans.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SimulatorsModule } from './modules/simulators/simulators.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { AuditModule } from './modules/audit/audit.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
 import { PlatformStatusModule } from './modules/platform-status/platform-status.module';
 import { SecurityModule } from './shared/security/security.module';
@@ -42,6 +43,7 @@ import { SecurityModule } from './shared/security/security.module';
     DashboardModule,
     SimulatorsModule,
     WebhooksModule,
+    AuditModule,
     ObservabilityModule,
     PlatformStatusModule,
     SecurityModule,

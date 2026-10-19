@@ -28,6 +28,11 @@ export interface AppConfig {
     password?: string;
     db?: number;
   };
+  audit: {
+    retentionYears: number;
+    verificationJobEnabled: boolean;
+    verificationIntervalSeconds: number;
+  };
 }
 
 export default (): AppConfig => ({
@@ -71,6 +76,19 @@ export default (): AppConfig => ({
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD,
     db: parseInt(process.env.REDIS_DB || '0', 10),
+  },
+  audit: {
+    retentionYears: resolvePositiveInteger(
+      process.env.AUDIT_RETENTION_YEARS,
+      5,
+      'AUDIT_RETENTION_YEARS',
+    ),
+    verificationJobEnabled: process.env.AUDIT_VERIFICATION_JOB_ENABLED === 'true',
+    verificationIntervalSeconds: resolvePositiveInteger(
+      process.env.AUDIT_VERIFICATION_INTERVAL_SECONDS,
+      86400,
+      'AUDIT_VERIFICATION_INTERVAL_SECONDS',
+    ),
   },
 });
 
