@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://frogpay_app@localhost:5432/frogpay_test
+      DIRECT_URL: postgresql://frogpay_test@localhost:5432/frogpay_test
+      PGPASSWORD: ${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - name: Create isolated database roles
+        run: |
+          psql postgresql://postgres@localhost:5432/postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE frogpay_test WITH LOGIN SUPERUSER" \
+            -c "CREATE ROLE frogpay_app WITH LOGIN NOBYPASSRLS" \
+            -c "CREATE DATABASE frogpay_test OWNER frogpay_test"
+      - name: Apply database migrations
+        run: |
+          DATABASE_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
+            npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Seed database catalogs
+        run: |
+          DATABASE_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
+            npx prisma db seed --schema apps/api/prisma/schema.prisma
+      - name: Check dependency health and vulnerabilities
+        run: npm audit --workspace apps/api --audit-level=moderate
+      - name: Lint API
+        run: npm run lint --workspace apps/api
+      - name: Unit tests
+        run: npm test --workspace apps/api -- --runInBand --testPathIgnorePatterns=adapters/stripe/stripe-payment-provider.sandbox.spec.ts
+      - name: End-to-end tests
+        run: npm run test:e2e --workspace apps/api -- --runInBand
+      - name: Build API
+        run: npm run build --workspace apps/api

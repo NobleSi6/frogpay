@@ -1,0 +1,326 @@
+{
+  "info": {
+    "_postman_id": "b1466f81-76c9-4ebf-9d11-cde0b50c4290",
+    "name": "FrogPay Sandbox",
+    "description": "Flujo de integración con los endpoints implementados. Define adminToken, invitationToken, ownerEmail, ownerPassword y webhookReceiverUrl en el entorno local. No se incluyen credenciales reales.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:4000/api" },
+    { "key": "tenantId", "value": "" },
+    { "key": "apiKey", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "invitationToken", "value": "" },
+    { "key": "ownerEmail", "value": "owner@example.test" },
+    { "key": "ownerPassword", "value": "" },
+    { "key": "paymentId", "value": "" },
+    { "key": "transferReference", "value": "" },
+    { "key": "webhookReceiverUrl", "value": "http://localhost:9000/frogpay-webhook" },
+    { "key": "webhookSignature", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Onboarding",
+      "item": [
+        {
+          "name": "Registrar tenant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tenant creado (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('La respuesta incluye tenant e API Keys iniciales', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.be.a('string');",
+                  "  pm.expect(body.apiKeys).to.be.an('array').that.is.not.empty;",
+                  "  pm.expect(body.apiKeys[0].rawKey).to.be.a('string');",
+                  "  pm.collectionVariables.set('tenantId', body.id);",
+                  "  pm.collectionVariables.set('apiKey', body.apiKeys.find(function (key) { return key.type === 'test'; }).rawKey);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Comercio Express S.R.L.\",\n  \"taxId\": \"1028472023\",\n  \"contactEmail\": \"{{ownerEmail}}\",\n  \"plan\": \"free\"\n}"
+            },
+            "url": "{{baseUrl}}/tenants",
+            "description": "Ruta administrativa actual. La respuesta incluye las API Keys test/live iniciales, mostradas una sola vez."
+          }
+        },
+        {
+          "name": "Activar invitación del propietario",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cuenta activada (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('La respuesta confirma la activación', function () { pm.expect(pm.response.json().message).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"token\": \"{{invitationToken}}\",\n  \"password\": \"{{ownerPassword}}\"\n}"
+            },
+            "url": "{{baseUrl}}/identity/activate-invitation",
+            "description": "El invitationToken se obtiene del correo local (Mailpit). Esta ruta reemplaza la ruta /v1/tenants/:id/activate que no existe."
+          }
+        },
+        {
+          "name": "Crear API Key sandbox adicional",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API Key creada (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Se entrega el secreto una sola vez', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.rawKey).to.be.a('string');",
+                  "  pm.collectionVariables.set('apiKey', body.rawKey);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Sandbox Postman\",\n  \"type\": \"test\"\n}" },
+            "url": "{{baseUrl}}/tenants/{{tenantId}}/api-keys",
+            "description": "Ruta real para generar una llave adicional. Requiere autorización administrativa."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pagos",
+      "item": [
+        {
+          "name": "Crear pago con tarjeta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pago nuevo creado (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('La respuesta tiene estado de pago y UUID', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.be.a('string');",
+                  "  pm.expect(['approved', 'rejected', 'failed']).to.include(body.status);",
+                  "  pm.collectionVariables.set('paymentId', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{apiKey}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"150.00\",\n  \"currency\": \"BOB\",\n  \"paymentMethod\": \"card\",\n  \"merchantReference\": \"POSTMAN-CARD-1001\",\n  \"paymentToken\": \"pm_replace_with_stripe_test_token\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/payments"
+          }
+        },
+        {
+          "name": "Crear pago QR",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pago QR creado (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('El QR queda pendiente con payload', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('pending');",
+                  "  pm.expect(body.qrPayload).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('paymentId', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{apiKey}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"150.00\",\n  \"currency\": \"BOB\",\n  \"paymentMethod\": \"qr\",\n  \"merchantReference\": \"POSTMAN-QR-1002\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/payments"
+          }
+        },
+        {
+          "name": "Crear pago por transferencia",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pago por transferencia creado (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Incluye instrucciones bancarias', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('pending');",
+                  "  pm.expect(body.bankInstructions.reference).to.be.a('string');",
+                  "  pm.collectionVariables.set('paymentId', body.id);",
+                  "  pm.collectionVariables.set('transferReference', body.bankInstructions.reference);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{apiKey}}" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"150.00\",\n  \"currency\": \"BOB\",\n  \"paymentMethod\": \"bank_transfer\",\n  \"merchantReference\": \"POSTMAN-BANK-1003\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/payments"
+          }
+        },
+        {
+          "name": "Consultar estado de pago",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pago consultado (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Incluye estado e historial', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('paymentId'));",
+                  "  pm.expect(body.status).to.be.a('string');",
+                  "  pm.expect(body.transitions).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Api-Key", "value": "{{apiKey}}" }],
+            "url": "{{baseUrl}}/v1/payments/{{paymentId}}"
+          }
+        },
+        {
+          "name": "Simular depósito bancario (sandbox)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Depósito procesado (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Incluye estado del depósito', function () { pm.expect(pm.response.json().status).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"depositId\": \"{{$guid}}\",\n  \"reference\": \"{{transferReference}}\",\n  \"amount\": \"150.00\",\n  \"currency\": \"BOB\",\n  \"bankName\": \"Banco de Prueba\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/test/simulators/bank-deposit"
+          }
+        },
+        {
+          "name": "Simular falla del proveedor (sandbox)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Falla simulada (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('La respuesta identifica el proveedor y modo', function () { pm.expect(pm.response.json()).to.include({ provider: 'stripe', mode: 'error' }); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key", "value": "{{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"provider\": \"stripe\",\n  \"mode\": \"error\",\n  \"durationSeconds\": 30\n}" },
+            "url": "{{baseUrl}}/v1/test/simulators/provider-fault"
+          }
+        },
+        {
+          "name": "Ejemplo de webhook al receptor del comercio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('El receptor aceptó el webhook (200)', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "FrogPay-Signature", "value": "{{webhookSignature}}" },
+              { "key": "FrogPay-Event", "value": "pago.aprobado" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": 1,\n  \"eventId\": \"{{$guid}}\",\n  \"eventName\": \"pago.aprobado\",\n  \"occurredOn\": \"2026-10-18T12:00:00.000Z\",\n  \"tenantId\": \"{{tenantId}}\",\n  \"payload\": { \"paymentId\": \"{{paymentId}}\", \"status\": \"approved\" }\n}"
+            },
+            "url": "{{webhookReceiverUrl}}",
+            "description": "Esta llamada apunta al receptor implementado por el comercio, no a un endpoint entrante de FrogPay. Genera webhookSignature usando el secreto y el body exacto."
+          }
+        }
+      ]
+    }
+  ]
+}
