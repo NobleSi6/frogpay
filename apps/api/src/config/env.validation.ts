@@ -92,6 +92,22 @@ class EnvironmentVariables {
   MAIL_PROVIDER?: 'mailpit' | 'resend';
 
   @IsOptional()
+  @IsString({ message: 'CORS_ORIGIN debe ser una cadena.' })
+  CORS_ORIGIN = 'http://localhost:3000';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'RATE_LIMIT_FREE_PER_MINUTE debe ser un entero.' })
+  @Min(1, { message: 'RATE_LIMIT_FREE_PER_MINUTE debe ser mayor que cero.' })
+  RATE_LIMIT_FREE_PER_MINUTE = 60;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'RATE_LIMIT_PREMIUM_PER_MINUTE debe ser un entero.' })
+  @Min(1, { message: 'RATE_LIMIT_PREMIUM_PER_MINUTE debe ser mayor que cero.' })
+  RATE_LIMIT_PREMIUM_PER_MINUTE = 600;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'PORT debe ser un número entero.' })
   @Min(1, { message: 'PORT debe ser mayor que cero.' })

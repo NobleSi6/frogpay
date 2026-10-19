@@ -28,3 +28,17 @@ jobs:
         run: npm run build --workspace apps/api
       - name: Run API unit tests
         run: npm test --workspace apps/api -- --runInBand --testPathIgnorePatterns=adapters/stripe/stripe-payment-provider.sandbox.spec.ts
+      - name: Security - npm audit (dependencias de producción)
+        run: npm audit --omit=dev --audit-level=high
+
+  secrets-scan:
+    # TSK-DEV2-403: escaneo de secretos con gitleaks en todo el historial
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 \
+            detect --source /repo --config /repo/.gitleaks.toml --redact --verbose

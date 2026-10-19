@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ObservabilityModule } from '../observability/observability.module';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { ProviderAdaptersModule } from '../provider-adapters/provider-adapters.module';
 import { CacheModule } from '../../shared/cache/cache.module';
@@ -6,6 +7,7 @@ import { PaymentEventProbe } from './infrastructure/events/payment-event-probe';
 import { IdempotencyService } from './infrastructure/idempotency/idempotency.service';
 import { CreatePaymentUseCase } from './application/use-cases/create-payment.use-case';
 import { GetPaymentUseCase } from './application/use-cases/get-payment.use-case';
+import { ListPaymentsUseCase } from './application/use-cases/list-payments.use-case';
 import { BankReconciliationService } from './application/services/bank-reconciliation.service';
 import { BankTransferExpirationService } from './application/services/bank-transfer-expiration.service';
 import { PaymentSettlementService } from './application/use-cases/payment-settlement.service';
@@ -21,7 +23,7 @@ import { ProviderRetryWorker } from './application/workers/provider-retry.worker
 import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.queue';
 
 @Module({
-  imports: [EventBusModule, ProviderAdaptersModule, CacheModule],
+  imports: [EventBusModule, ProviderAdaptersModule, CacheModule, ObservabilityModule],
   controllers: [
     PaymentsController,
     DashboardPaymentsController,
@@ -33,6 +35,7 @@ import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.qu
     IdempotencyService,
     CreatePaymentUseCase,
     GetPaymentUseCase,
+    ListPaymentsUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
     PaymentSettlementService,
@@ -49,6 +52,7 @@ import { ProviderRetryQueue } from './infrastructure/messaging/provider-retry.qu
     IdempotencyService,
     CreatePaymentUseCase,
     GetPaymentUseCase,
+    ListPaymentsUseCase,
     BankReconciliationService,
     BankTransferExpirationService,
     PaymentSettlementService,

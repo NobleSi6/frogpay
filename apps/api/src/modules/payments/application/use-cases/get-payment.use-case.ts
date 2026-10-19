@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
-import { PaymentDetailsResponseDto } from '../dto/payment-details.dto';
+import {
+  GetPaymentResponseDto,
+  PaymentTransitionDto,
+  PaymentStatusHistoryItemDto,
+} from '../dto/get-payment-response.dto';
 import {
   BankInstructionsDto,
   PaymentStatus,
@@ -11,7 +15,7 @@ import type { Prisma } from '@prisma/client';
 export class GetPaymentUseCase {
   constructor(private readonly tenantContext: PrismaTenantContextService) {}
 
-  async execute(tenantId: string, paymentId: string): Promise<PaymentDetailsResponseDto> {
+  async execute(tenantId: string, paymentId: string): Promise<GetPaymentResponseDto> {
     return this.tenantContext.withTenant(tenantId, async (tx) => {
       const payment = await tx.payment.findUnique({
         where: {
@@ -40,6 +44,41 @@ export class GetPaymentUseCase {
         });
       }
 
+      const isPending = payment.status === 'pending';
+
+      const transitions: PaymentTransitionDto[] = payment.payment_status_history.map((history) => {
+        const metadata =
+          history.metadata && typeof history.metadata === 'object' && !Array.isArray(history.metadata)
+            ? (history.metadata as Record<string, unknown>)
+            : {};
+
+        let actor = 'system';
+        if (typeof metadata.actor === 'string' && metadata.actor) {
+          actor = metadata.actor;
+        } else if (history.previous_status === 'pending' && history.new_status === 'approved') {
+          actor = 'webhook';
+        } else if (metadata.depositId || metadata.reference) {
+          actor = 'webhook';
+        }
+
+        return {
+          from: history.previous_status ?? null,
+          to: history.new_status,
+          createdAt: history.created_at.toISOString(),
+          actor,
+        };
+      });
+
+      const statusHistory: PaymentStatusHistoryItemDto[] = payment.payment_status_history.map((history) => ({
+        previousStatus: history.previous_status ?? null,
+        newStatus: history.new_status,
+        metadata:
+          history.metadata && typeof history.metadata === 'object' && !Array.isArray(history.metadata)
+            ? (history.metadata as Record<string, unknown>)
+            : {},
+        createdAt: history.created_at.toISOString(),
+      }));
+
       return {
         id: payment.id,
         status: payment.status as PaymentStatus,
@@ -52,20 +91,14 @@ export class GetPaymentUseCase {
         netAmount: payment.net_amount ? String(payment.net_amount) : null,
         providerTransactionId: payment.provider_transaction_id ?? null,
         errorCode: payment.error_code ?? null,
-        expiresAt: payment.expires_at ? payment.expires_at.toISOString() : null,
-        bankInstructions: toBankInstructions(payment.bank_instructions),
-        qrPayload: payment.qr_payload ?? null,
+        // Solo disponibles mientras el pago esté pendiente
+        qrPayload: isPending ? (payment.qr_payload ?? null) : null,
+        bankInstructions: isPending ? toBankInstructions(payment.bank_instructions) : null,
         createdAt: payment.created_at.toISOString(),
         updatedAt: payment.updated_at.toISOString(),
-        statusHistory: payment.payment_status_history.map((history) => ({
-          previousStatus: history.previous_status ?? null,
-          newStatus: history.new_status,
-          metadata:
-            history.metadata && typeof history.metadata === 'object' && !Array.isArray(history.metadata)
-              ? (history.metadata as Record<string, unknown>)
-              : {},
-          createdAt: history.created_at.toISOString(),
-        })),
+        expiresAt: payment.expires_at ? payment.expires_at.toISOString() : null,
+        transitions,
+        statusHistory,
       };
     });
   }

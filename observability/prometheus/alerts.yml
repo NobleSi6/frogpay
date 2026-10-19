@@ -1,0 +1,84 @@
+groups:
+  - name: frogpay-platform-alerts
+    interval: 30s
+    rules:
+      - alert: FrogPayHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(frogpay_http_request_duration_seconds_bucket[5m])
+            )
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "FrogPay: latencia p95 superior a 300 ms"
+          description: "La latencia p95 de la API supera 300 ms durante 5 minutos."
+
+      - alert: FrogPayHighErrorRate
+        expr: |
+          (
+            sum(rate(frogpay_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(frogpay_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "FrogPay: más del 5% de errores HTTP 5xx"
+          description: "La tasa de errores HTTP 5xx supera el 5%."
+
+      - alert: FrogPayCircuitBreakerOpen
+        expr: frogpay_circuit_breaker_state{state="OPEN"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          component: payment-provider
+        annotations:
+          summary: "FrogPay: circuit breaker abierto"
+          description: "Un proveedor de pagos tiene su circuito abierto."
+
+      - alert: FrogPayDeadLetterQueue
+        expr: sum(frogpay_dlq_messages) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: rabbitmq
+        annotations:
+          summary: "FrogPay: mensajes pendientes en DLQ"
+          description: "Una o más colas dead-letter contienen mensajes fallidos."
+
+      - alert: FrogPayStaleOutbox
+        expr: frogpay_outbox_oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          component: outbox
+        annotations:
+          summary: "FrogPay: eventos atrasados en outbox"
+          description: "Hay eventos pendientes con más de 5 minutos de antigüedad."
+
+      - alert: FrogPayOutboxBacklog
+        expr: frogpay_outbox_pending_events > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "FrogPay: acumulación de eventos pendientes"
+          description: "El outbox supera los 100 eventos pendientes."
+
+      - alert: FrogPayOutboxMetricsUnavailable
+        expr: frogpay_outbox_metrics_available == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: "FrogPay: métricas del outbox no disponibles"
+          description: "No fue posible consultar el estado del outbox durante 2 minutos."

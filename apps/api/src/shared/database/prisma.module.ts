@@ -8,6 +8,6 @@ import { PrismaService } from './prisma.service';
 @Module({
   imports: [ConfigModule],
   providers: [PrismaService, PrismaTenantContextService, DatabaseHealthService],
-  exports: [PrismaTenantContextService, DatabaseHealthService],
+  exports: [PrismaService, PrismaTenantContextService, DatabaseHealthService],
 })
 export class PrismaModule {}

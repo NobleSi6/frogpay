@@ -29,9 +29,10 @@ excepción HTTP, ese contrato se rompe.
 | `idempotency_in_progress` | 409 | Misma `Idempotency-Key`, solicitud original aún en `PROCESSING`. |
 | `idempotency_key_reused` | 422 | Misma `Idempotency-Key`, cuerpo con hash distinto. |
 | `plan_limit_exceeded` | 429 | El tenant superó el límite de volumen de su plan (RF-20). |
+| `rate_limit_exceeded` | 429 | Se superó el límite de solicitudes por tenant/API Key. Incluye `Retry-After` en segundos. |
 | `invalid_state_transition` | 422 | Se intentó realizar una transición o conciliación sobre un pago que ya no se encuentra en estado `pending`. |
 
-Forma de la respuesta, igual para los 4:
+Forma de la respuesta:
 
 ```json
 {
@@ -43,6 +44,11 @@ Forma de la respuesta, igual para los 4:
 ```
 
 `details` es específico de cada código y puede ser `null`.
+
+Para `rate_limit_exceeded`, `details` incluye `limit`, `windowSeconds` y
+`retryAfterSeconds`. La cabecera `Retry-After` contiene el mismo valor de
+`retryAfterSeconds`. Este límite de frecuencia es distinto del límite de
+volumen comercial de `plan_limit_exceeded`, aunque ambos usan HTTP `429`.
 
 ## Resultados de pago
 

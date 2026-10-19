@@ -5,4 +5,10 @@ coverage/
 .env
 .env.local
 *.log
+apps/api/logs/*.jsonl
 .DS_Store
+
+# Certificados TLS de desarrollo (TSK-DEV2-403)
+infra/nginx/certs/*
+!infra/nginx/certs/.gitkeep
+docs/pruebas/k6-load-result.json

@@ -6,19 +6,27 @@ import {
 import { DashboardPaymentsController } from './dashboard-payments.controller';
 import type { CreatePaymentUseCase } from '../../application/use-cases/create-payment.use-case';
 import type { GetPaymentUseCase } from '../../application/use-cases/get-payment.use-case';
+import type { ListPaymentsUseCase } from '../../application/use-cases/list-payments.use-case';
 import type { BankReconciliationService } from '../../application/services/bank-reconciliation.service';
+import type { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import type { AuthenticatedTenantContext } from '../../../../shared/auth/current-tenant.decorator';
 import type { CreatePaymentDto } from '../../application/dto/create-payment.dto';
 import type { PaymentResponseDto } from '../../application/dto/payment-response.dto';
-import type { PaymentDetailsResponseDto } from '../../application/dto/payment-details.dto';
+import type { GetPaymentResponseDto } from '../../application/dto/get-payment-response.dto';
+import type {
+  ListPaymentsQueryDto,
+  ListPaymentsResponseDto,
+} from '../../application/dto/list-payments.dto';
 
 describe('DashboardPaymentsController', () => {
   let controller: DashboardPaymentsController;
   let createPaymentUseCase: jest.Mocked<Partial<CreatePaymentUseCase>>;
   let getPaymentUseCase: jest.Mocked<Partial<GetPaymentUseCase>>;
+  let listPaymentsUseCase: jest.Mocked<Partial<ListPaymentsUseCase>>;
   let bankReconciliationService: jest.Mocked<
     Partial<BankReconciliationService>
   >;
+  let tenantContext: { withTenant: jest.Mock };
 
   const authContext: AuthenticatedTenantContext = {
     userId: 'user-123',
@@ -47,14 +55,34 @@ describe('DashboardPaymentsController', () => {
     merchantReference: 'test-order-99',
     commissionAmount: '8.75',
     netAmount: '241.25',
-    providerTransactionId: 'pi_test123',
+    providerTransactionId: 'BT-2026-REF1',
     errorCode: null,
+    expiresAt: null,
+    bankInstructions: null,
+    qrPayload: null,
     createdAt: '2026-10-01T14:32:10.000Z',
     updatedAt: '2026-10-01T14:32:11.000Z',
   };
 
-  const sampleDetailsResponse: PaymentDetailsResponseDto = {
+  const sampleGetPaymentResponse: GetPaymentResponseDto = {
     ...sampleResponse,
+    qrPayload: null,
+    bankInstructions: null,
+    expiresAt: null,
+    transitions: [
+      {
+        from: null,
+        to: 'pending',
+        createdAt: '2026-10-01T14:32:10.000Z',
+        actor: 'system',
+      },
+      {
+        from: 'pending',
+        to: 'approved',
+        createdAt: '2026-10-01T14:32:11.000Z',
+        actor: 'webhook',
+      },
+    ],
     statusHistory: [
       {
         previousStatus: null,
@@ -71,6 +99,19 @@ describe('DashboardPaymentsController', () => {
     ],
   };
 
+  const sampleWebhookDelivery = {
+    id: 'f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4',
+    webhook_id: 'cd88e9d8-7eec-4cca-a142-3946e19980ef',
+    payment_id: validPaymentId,
+    tenant_id: 'tenant-456',
+    status: 'delivered',
+    attempt_count: 1,
+    delivered_at: new Date('2026-10-01T14:32:15.000Z'),
+    next_retry_at: null,
+    created_at: new Date('2026-10-01T14:32:12.000Z'),
+    updated_at: new Date('2026-10-01T14:32:15.000Z'),
+  };
+
   let mockResponse: any;
 
   beforeEach(() => {
@@ -80,8 +121,23 @@ describe('DashboardPaymentsController', () => {
     getPaymentUseCase = {
       execute: jest.fn(),
     };
+    listPaymentsUseCase = {
+      execute: jest.fn(),
+    };
     bankReconciliationService = {
       reconcile: jest.fn(),
+    };
+    tenantContext = {
+      withTenant: jest.fn(
+        async (_tenantId: string, callback: (tx: any) => Promise<unknown>) => {
+          const mockTx = {
+            webhook_delivery: {
+              findMany: jest.fn().mockResolvedValue([sampleWebhookDelivery]),
+            },
+          };
+          return callback(mockTx);
+        },
+      ),
     };
     mockResponse = {
       status: jest.fn().mockReturnThis(),
@@ -90,8 +146,39 @@ describe('DashboardPaymentsController', () => {
     controller = new DashboardPaymentsController(
       createPaymentUseCase as CreatePaymentUseCase,
       getPaymentUseCase as GetPaymentUseCase,
+      listPaymentsUseCase as ListPaymentsUseCase,
       bankReconciliationService as BankReconciliationService,
+      tenantContext as unknown as PrismaTenantContextService,
     );
+  });
+
+  describe('listPayments', () => {
+    it('delegates to listPaymentsUseCase with tenantId from JWT session context', async () => {
+      const mockResult: ListPaymentsResponseDto = {
+        data: [sampleResponse],
+        page: 1,
+        limit: 25,
+        total: 1,
+        totalPages: 1,
+      };
+      (listPaymentsUseCase.execute as jest.Mock).mockResolvedValue(mockResult);
+
+      const query: ListPaymentsQueryDto = {
+        page: 1,
+        limit: 25,
+        status: 'approved',
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      };
+
+      const result = await controller.listPayments(authContext, query);
+
+      expect(listPaymentsUseCase.execute).toHaveBeenCalledWith(
+        'tenant-456',
+        query,
+      );
+      expect(result).toEqual(mockResult);
+    });
   });
 
   describe('createTestPayment', () => {
@@ -170,9 +257,9 @@ describe('DashboardPaymentsController', () => {
   });
 
   describe('getDetails', () => {
-    it('returns payment details and timeline history for tenant in session', async () => {
+    it('returns payment details enriched with sanitized webhook deliveries', async () => {
       (getPaymentUseCase.execute as jest.Mock).mockResolvedValue(
-        sampleDetailsResponse,
+        sampleGetPaymentResponse,
       );
 
       const result = await controller.getDetails(authContext, validPaymentId);
@@ -181,14 +268,30 @@ describe('DashboardPaymentsController', () => {
         'tenant-456',
         validPaymentId,
       );
-      expect(result).toEqual(sampleDetailsResponse);
+      expect(result.id).toBe(validPaymentId);
+      expect(result.webhookDeliveries).toHaveLength(1);
+      expect(result.webhookDeliveries[0]).toEqual({
+        id: sampleWebhookDelivery.id,
+        webhookId: sampleWebhookDelivery.webhook_id,
+        status: 'delivered',
+        attemptCount: 1,
+        lastAttemptAt: '2026-10-01T14:32:15.000Z',
+        nextAttemptAt: null,
+        createdAt: '2026-10-01T14:32:12.000Z',
+      });
+    });
+
+    it('throws BadRequestException if payment ID is not a valid UUID', async () => {
+      await expect(
+        controller.getDetails(authContext, 'invalid-id'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('simulateDeposit', () => {
     it('ejecuta conciliación simulada para pago en sandbox con modo exact', async () => {
       (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
-        ...sampleDetailsResponse,
+        ...sampleGetPaymentResponse,
         environment: 'sandbox',
         paymentMethod: 'bank_transfer',
         providerTransactionId: 'BT-2026-REF1',
@@ -223,7 +326,7 @@ describe('DashboardPaymentsController', () => {
 
     it('rechaza con ForbiddenException si el pago es de producción', async () => {
       (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
-        ...sampleDetailsResponse,
+        ...sampleGetPaymentResponse,
         environment: 'production',
       });
 
@@ -236,7 +339,7 @@ describe('DashboardPaymentsController', () => {
 
     it('rechaza simular un depósito para un método distinto de transferencia', async () => {
       (getPaymentUseCase.execute as jest.Mock).mockResolvedValue({
-        ...sampleDetailsResponse,
+        ...sampleGetPaymentResponse,
         environment: 'sandbox',
         paymentMethod: 'card',
       });

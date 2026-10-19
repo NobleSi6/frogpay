@@ -8,6 +8,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { MetricsService } from '../../../observability/metrics.service';
 import type { Prisma } from '@prisma/client';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { IdempotencyService } from '../../infrastructure/idempotency/idempotency.service';
@@ -50,6 +51,7 @@ export class CreatePaymentUseCase {
     @Inject(PROVIDER_RETRY_SCHEDULER)
     private readonly retryScheduler?: ProviderRetryScheduler,
     @Optional() private readonly settlement?: PaymentSettlementService,
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
 
   async execute(
@@ -459,6 +461,11 @@ export class CreatePaymentUseCase {
         idempotencyKey,
         bodyHash,
         paymentResponse,
+      );
+
+      this.metrics?.recordPayment(
+        paymentResponse.status,
+        dto.paymentMethod,
       );
 
       return { isReplay: false, response: paymentResponse };
