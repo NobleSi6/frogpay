@@ -53,6 +53,8 @@ async function seed(): Promise<void> {
   for (const name of [
     'platform_admin',
     'tenant_owner',
+    'tenant_operator',
+    'tenant_viewer',
     'tenant_admin',
     'tenant_developer',
     'tenant_finance',
@@ -229,17 +231,12 @@ async function seedSprint4Demo(): Promise<void> {
     where: { code: { in: ['stripe', 'qr_local', 'bank_transfer_local'] } },
     include: { payment_method: true },
   });
-  const byCode = new Map(
-    providers.map((provider) => [provider.code, provider]),
-  );
+  const byCode = new Map(providers.map((provider) => [provider.code, provider]));
   for (let dayOffset = 29; dayOffset >= 0; dayOffset -= 1) {
     for (let sequence = 0; sequence < 3; sequence += 1) {
-      const providerCode = ['stripe', 'qr_local', 'bank_transfer_local'][
-        sequence
-      ];
+      const providerCode = ['stripe', 'qr_local', 'bank_transfer_local'][sequence];
       const provider = byCode.get(providerCode);
-      if (!provider)
-        throw new Error(`Proveedor demo no encontrado: ${providerCode}`);
+      if (!provider) throw new Error(`Proveedor demo no encontrado: ${providerCode}`);
       const status =
         (dayOffset + sequence) % 7 === 0
           ? 'rejected'
@@ -251,8 +248,7 @@ async function seedSprint4Demo(): Promise<void> {
       createdAt.setUTCHours(12 + sequence, 0, 0, 0);
       createdAt.setUTCDate(createdAt.getUTCDate() - dayOffset);
       const idempotencyKey = `sprint4-demo-${dayOffset}-${sequence}`;
-      const commission =
-        status === 'approved' ? Number((amount * 0.025 + 0.3).toFixed(2)) : 0;
+      const commission = status === 'approved' ? Number((amount * 0.025 + 0.3).toFixed(2)) : 0;
       const demoPayment = await prisma.payment.upsert({
         where: {
           tenant_id_idempotency_key: {
@@ -381,9 +377,7 @@ async function seedDevelopmentPlatformAdmin(): Promise<void> {
       throw new Error('DEV_PLATFORM_ADMIN_EMAIL debe ser un correo válido.');
     }
     if (password.length < 12) {
-      throw new Error(
-        'DEV_PLATFORM_ADMIN_PASSWORD debe tener al menos 12 caracteres.',
-      );
+      throw new Error('DEV_PLATFORM_ADMIN_PASSWORD debe tener al menos 12 caracteres.');
     }
 
     const duplicateEmail = await tx.app_user.findFirst({

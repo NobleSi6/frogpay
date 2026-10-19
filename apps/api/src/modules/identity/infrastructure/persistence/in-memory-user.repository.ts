@@ -34,6 +34,15 @@ export class InMemoryUserRepository implements IUserRepository {
     return null;
   }
 
+  async findByTenantEmail(tenantId: string, email: string): Promise<User | null> {
+    const user = await this.findByEmail(email);
+    return user?.tenantId === tenantId ? user : null;
+  }
+
+  async listByTenant(tenantId: string): Promise<User[]> {
+    return [...this.items.values()].filter((user) => user.tenantId === tenantId);
+  }
+
   async save(user: User): Promise<void> {
     this.items.set(user.id, user);
   }
