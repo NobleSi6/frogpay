@@ -26,6 +26,12 @@ export const ERROR_CATALOG = {
     httpStatus: 429,
     message: 'Superaste el límite de volumen mensual de tu plan.',
   },
+  rate_limit_exceeded: {
+    code: 'rate_limit_exceeded',
+    httpStatus: 429,
+    message:
+      'Superaste el límite de solicitudes por minuto de tu plan. Intenta de nuevo en unos segundos.',
+  },
   card_declined: {
     code: 'card_declined',
     message: 'El emisor rechazó el método de pago.',

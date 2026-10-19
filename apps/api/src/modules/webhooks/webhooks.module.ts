@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ObservabilityModule } from '../observability/observability.module';
 import { EventBusModule } from '../../shared/events/event-bus.module';
 import { PrismaModule } from '../../shared/database/prisma.module';
 import { ProviderAdaptersModule } from '../provider-adapters/provider-adapters.module';
@@ -17,7 +18,7 @@ import { WebhookDeliveriesController } from './presentation/http/webhook-deliver
 import { WebhookEndpointsController } from './presentation/http/webhook-endpoints.controller';
 
 @Module({
-  imports: [EventBusModule, PrismaModule, ProviderAdaptersModule],
+  imports: [EventBusModule, PrismaModule, ProviderAdaptersModule, ObservabilityModule],
   controllers: [WebhookEndpointsController, WebhookDeliveriesController],
   providers: [
     WebhookDeliveryRepository,

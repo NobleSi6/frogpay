@@ -1,0 +1,159 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.4.2
+    restart: unless-stopped
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    depends_on:
+      - alertmanager
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+
+  loki:
+    image: grafana/loki:3.5.1
+    restart: unless-stopped
+    profiles: ["observability"]
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks:
+      - default
+
+  promtail:
+    image: grafana/promtail:3.5.1
+    restart: unless-stopped
+    profiles: ["observability"]
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - ./apps/api/logs:/var/log/frogpay:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    networks:
+      - default
+
+  tempo:
+    image: grafana/tempo:2.8.1
+    restart: unless-stopped
+    profiles: ["observability"]
+    command: -config.file=/etc/tempo/config.yml
+    volumes:
+      - ./observability/tempo/tempo.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:3200:3200"
+    networks:
+      - default
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.129.0
+    restart: unless-stopped
+    profiles: ["observability"]
+    command:
+      - --config=/etc/otelcol/config.yml
+    volumes:
+      - ./observability/otel/collector.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    depends_on:
+      - tempo
+    networks:
+      - default
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - alertmanager-config-data:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    depends_on:
+      alertmanager-config:
+        condition: service_completed_successfully
+      alert-receiver:
+        condition: service_started
+    networks:
+      - default
+
+  alert-receiver:
+    image: node:22-alpine
+    restart: unless-stopped
+    profiles: ["observability"]
+    working_dir: /app
+    command:
+      - node
+      - server.js
+    volumes:
+      - ./observability/alert-receiver/server.js:/app/server.js:ro
+    networks:
+      - default
+
+  alertmanager-config:
+    image: node:22-alpine
+    profiles: ["observability"]
+    entrypoint:
+      - node
+      - /render-alertmanager-config.js
+    environment:
+      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-http://alert-receiver:8080/alerts}
+    volumes:
+      - ./scripts/render-alertmanager-config.js:/render-alertmanager-config.js:ro
+      - alertmanager-config-data:/config
+    network_mode: none
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Configura GRAFANA_ADMIN_PASSWORD en el .env raíz}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3002:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - tempo
+    networks:
+      - default
+
+  api:
+    environment:
+      OTEL_SERVICE_NAME: frogpay-api
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+
+volumes:
+  alertmanager-config-data:
+  alertmanager-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  grafana-data:
