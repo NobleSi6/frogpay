@@ -1,7 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { context, propagation, ROOT_CONTEXT } from '@opentelemetry/api';
 import * as amqp from 'amqplib';
 import { MetricsService } from '../../../observability/metrics.service';
+import {
+  currentRequestId,
+  runWithOptionalRequestId,
+} from '../../../../shared/observability/request-context';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../../domain/retry-policy';
 
 /**
@@ -16,7 +21,8 @@ import { WEBHOOK_RETRY_DELAYS_MS } from '../../domain/retry-policy';
  */
 export const WEBHOOK_DISPATCH_QUEUE = 'frogpay.webhooks.dispatch';
 export const WEBHOOK_DLQ = 'frogpay.webhooks.dlq';
-export const retryQueueName = (delayMs: number): string => `frogpay.webhooks.retry.${delayMs}`;
+export const retryQueueName = (delayMs: number): string =>
+  `frogpay.webhooks.retry.${delayMs}`;
 
 export interface WebhookDispatchMessage {
   deliveryId: string;
@@ -59,13 +65,21 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
 
   async enqueue(message: WebhookDispatchMessage, delayMs = 0): Promise<void> {
     if (delayMs > 0 && !WEBHOOK_RETRY_DELAYS_MS.includes(delayMs)) {
-      throw new Error(`Retraso ${delayMs} ms no está definido en la política de reintentos`);
+      throw new Error(
+        `Retraso ${delayMs} ms no está definido en la política de reintentos`,
+      );
     }
     const channel = await this.getChannel();
-    const queue = delayMs > 0 ? retryQueueName(delayMs) : WEBHOOK_DISPATCH_QUEUE;
+    const queue =
+      delayMs > 0 ? retryQueueName(delayMs) : WEBHOOK_DISPATCH_QUEUE;
+    const traceHeaders: Record<string, string> = {};
+    propagation.inject(context.active(), traceHeaders);
+    const requestId = currentRequestId();
+    if (requestId) traceHeaders['x-request-id'] = requestId;
     channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)), {
       persistent: true,
       contentType: 'application/json',
+      headers: traceHeaders,
     });
     await channel.waitForConfirms();
   }
@@ -81,7 +95,9 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
   }
 
   /** Registra el worker; si la conexión se cae, se vuelve a suscribir al reconectar. */
-  async consume(handler: (message: WebhookDispatchMessage) => Promise<void>): Promise<void> {
+  async consume(
+    handler: (message: WebhookDispatchMessage) => Promise<void>,
+  ): Promise<void> {
     this.handler = handler;
     if (this.channel) {
       await this.startConsumer(this.channel);
@@ -102,12 +118,28 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
     await channel.consume(WEBHOOK_DISPATCH_QUEUE, async (raw) => {
       if (!raw) return;
       try {
-        await handler(JSON.parse(raw.content.toString()) as WebhookDispatchMessage);
+        const carrier: Record<string, string> = {};
+        for (const [key, value] of Object.entries(
+          raw.properties.headers ?? {},
+        )) {
+          if (typeof value === 'string') carrier[key] = value;
+          else if (Buffer.isBuffer(value)) carrier[key] = value.toString();
+        }
+        const parentContext = propagation.extract(ROOT_CONTEXT, carrier);
+        await runWithOptionalRequestId(carrier['x-request-id'], () =>
+          context.with(parentContext, () =>
+            handler(
+              JSON.parse(raw.content.toString()) as WebhookDispatchMessage,
+            ),
+          ),
+        );
         channel.ack(raw);
       } catch (error) {
         // El worker registra los fallos HTTP en BD; esto solo cubre errores inesperados
         // (BD caída, etc.). Se reencola una vez y, si vuelve a fallar, lo recupera el barrido.
-        this.logger.error(`Error procesando entrega de webhook: ${error instanceof Error ? error.message : error}`);
+        this.logger.error(
+          `Error procesando entrega de webhook: ${error instanceof Error ? error.message : error}`,
+        );
         channel.nack(raw, false, !raw.fields.redelivered);
       }
     });
@@ -147,9 +179,13 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
     connection.on('close', () => {
       this.channel = undefined;
       this.connection = undefined;
-      this.logger.warn('Conexión de webhooks con RabbitMQ cerrada; se reconectará en el próximo uso.');
+      this.logger.warn(
+        'Conexión de webhooks con RabbitMQ cerrada; se reconectará en el próximo uso.',
+      );
     });
-    connection.on('error', (error: Error) => this.logger.error(`RabbitMQ (webhooks): ${error.message}`));
+    connection.on('error', (error: Error) =>
+      this.logger.error(`RabbitMQ (webhooks): ${error.message}`),
+    );
 
     this.connection = connection;
     this.channel = channel;
