@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, LogOut, Settings, Users } from "lucide-react";
+import { Activity, Home, LogOut, Settings, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <aside className="bg-neutral-900 p-5 text-neutral-100 md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col">
         <Link href="/admin" aria-label="Inicio de FrogPay" className="mb-6 inline-flex w-full items-center"><BrandLogo className="h-auto w-full" priority /></Link>
         <nav aria-label="Administración" className="flex flex-wrap gap-2 md:flex-col">
-          {[{ href: "/admin", label: "Inicio", Icon: Home }, { href: "/admin/tenants", label: "Tenants", Icon: Users }].map(({ href, label, Icon }) => {
+          {[{ href: "/admin", label: "Inicio", Icon: Home }, { href: "/admin/tenants", label: "Tenants", Icon: Users }, { href: "/admin/platform-status", label: "Estado de la plataforma", Icon: Activity }].map(({ href, label, Icon }) => {
             const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
             return <Link key={href} href={href} aria-current={active ? "page" : undefined} className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring ${active ? "bg-primary text-primary-foreground" : "hover:bg-neutral-800"}`}><Icon aria-hidden className="size-5" />{label}</Link>;
           })}
