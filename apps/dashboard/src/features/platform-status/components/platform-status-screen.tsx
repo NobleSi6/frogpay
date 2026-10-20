@@ -86,9 +86,12 @@ export function PlatformStatusScreen() {
   }, []);
 
   useEffect(() => {
-    void refreshStatus(true);
+    const initial = window.setTimeout(() => void refreshStatus(true), 0);
     const interval = window.setInterval(() => void refreshStatus(false), 30_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
   }, [refreshStatus]);
 
   async function handleVerifyIntegrity() {

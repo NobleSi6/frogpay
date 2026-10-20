@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, CreditCard, KeyRound, LogOut, ReceiptText, ScrollText, Webhook, Settings, Scale } from "lucide-react";
+import { Home, CreditCard, KeyRound, LogOut, ReceiptText, ScrollText, Webhook, Settings, Scale, Sparkles, Store } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
@@ -17,17 +17,26 @@ type NavItem = {
   Icon: LucideIcon;
   exact?: boolean;
   nested?: boolean;
+  matches?: (pathname: string) => boolean;
 };
+
+const isPaymentFlow = (pathname: string) =>
+  pathname === "/dashboard/pagos" ||
+  (pathname.startsWith("/dashboard/pagos/") &&
+    !pathname.startsWith("/dashboard/pagos/transacciones") &&
+    !pathname.startsWith("/dashboard/pagos/conciliacion"));
 
 const links: NavItem[] = [
   { href: "/dashboard", label: "Inicio", Icon: Home, exact: true },
-  { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, exact: true },
+  { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, matches: isPaymentFlow },
   { href: "/dashboard/pagos/transacciones", label: "Transacciones", Icon: ReceiptText, exact: true, nested: true },
   { href: "/dashboard/pagos/conciliacion", label: "Conciliación", Icon: Scale, exact: false },
   { href: "/dashboard/auditoria", label: "Auditoría", Icon: ScrollText, exact: false },
   { href: "/dashboard/api-keys", label: "API Keys", Icon: KeyRound, exact: false },
   { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook, exact: false },
-  { href: "/dashboard/configuracion", label: "Configuración", Icon: Settings, exact: false },
+  { href: "/dashboard/configuracion/proveedores", label: "Proveedores", Icon: Store, exact: false },
+  { href: "/dashboard/plan", label: "Plan", Icon: Sparkles, exact: false },
+  { href: "/dashboard/configuracion", label: "Configuración", Icon: Settings, exact: true },
 ];
 
 export function TenantShell({ children }: { children: ReactNode }) {
@@ -48,10 +57,12 @@ export function TenantShell({ children }: { children: ReactNode }) {
           <BrandLogo className="h-auto w-full" priority />
         </Link>
         <nav aria-label="Tenant" className="flex flex-wrap gap-2 md:flex-col">
-          {links.map(({ href, label, Icon, exact, nested }) => {
-            const active = exact 
-              ? pathname === href 
-              : pathname.startsWith(href);
+          {links.map(({ href, label, Icon, exact, nested, matches }) => {
+            const active = matches
+              ? matches(pathname)
+              : exact
+                ? pathname === href
+                : pathname.startsWith(href);
 
             return (
               <Link 

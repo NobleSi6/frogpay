@@ -12,17 +12,24 @@ const initialTenants: Tenant[] = [
   { id: "4", company: "Yape Fast", email: "admin@yapefast.pe", status: "Activo", created: "20 oct 2024" },
   { id: "5", company: "Platzi Pay", email: "owner@platzipay.com", status: "Activo", created: "15 oct 2024" },
 ];
-const TenantContext = createContext<{ tenants: Tenant[]; addTenant: (draft: TenantDraft) => Promise<void>; error: string } | null>(null);
+const TenantContext = createContext<{
+  tenants: Tenant[];
+  isLoading: boolean;
+  addTenant: (draft: TenantDraft) => Promise<void>;
+  error: string;
+} | null>(null);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [tenants, setTenants] = useState<Tenant[]>(backendIntegrationEnabled ? [] : initialTenants);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(backendIntegrationEnabled);
   useEffect(() => {
     if (!backendIntegrationEnabled) return;
     let active = true;
     void listTenants().then(rows => {
       if (active) setTenants(rows.map(row => ({ id: row.id, company: row.name, email: row.ownerEmail, status: row.status === "active" ? "Activo" : "Invitado", created: new Intl.DateTimeFormat("es", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(row.createdAt)) })));
-    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los tenants."); });
+    }).catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los tenants."); })
+      .finally(() => { if (active) setIsLoading(false); });
     return () => { active = false; };
   }, []);
   async function addTenant(draft: TenantDraft) {
@@ -30,7 +37,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     if (!result) await new Promise(resolve => setTimeout(resolve, 1200));
     setTenants((current) => [{ id: result?.id ?? crypto.randomUUID(), company: result?.name ?? draft.company.trim(), email: result?.contactEmail ?? draft.email.trim(), status: "Invitado", created: new Intl.DateTimeFormat("es", { day: "2-digit", month: "short", year: "numeric" }).format(result ? new Date(result.createdAt) : new Date()) }, ...current]);
   }
-  return <TenantContext.Provider value={{ tenants, addTenant, error }}>{children}</TenantContext.Provider>;
+  return <TenantContext.Provider value={{ tenants, isLoading, addTenant, error }}>{children}</TenantContext.Provider>;
 }
 
 export function useTenants() {

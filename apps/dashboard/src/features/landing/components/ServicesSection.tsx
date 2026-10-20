@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ArrowRight, CreditCard, Repeat, ShieldCheck, Wallet } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Reveal } from "./Reveal"
 
 const services = [
