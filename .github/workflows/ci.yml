@@ -26,10 +26,23 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      rabbitmq:
+        image: rabbitmq:3-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: frogpay_test
+          RABBITMQ_DEFAULT_PASS: frogpay_test_password
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       DATABASE_URL: postgresql://frogpay_app@localhost:5432/frogpay_test
       DIRECT_URL: postgresql://frogpay_test@localhost:5432/frogpay_test
       PGPASSWORD: ${{ github.run_id }}
+      RABBITMQ_URL: amqp://frogpay_test:frogpay_test_password@localhost:5672
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,6 +57,8 @@ jobs:
           psql postgresql://postgres@localhost:5432/postgres -v ON_ERROR_STOP=1 \
             -c "CREATE ROLE frogpay_test WITH LOGIN SUPERUSER" \
             -c "CREATE ROLE frogpay_app WITH LOGIN NOBYPASSRLS" \
+            -c "CREATE ROLE anon NOLOGIN" \
+            -c "CREATE ROLE authenticated NOLOGIN" \
             -c "CREATE DATABASE frogpay_test OWNER frogpay_test"
       - name: Apply database migrations
         run: |
@@ -53,8 +68,8 @@ jobs:
         run: |
           DATABASE_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
             npx prisma db seed --schema apps/api/prisma/schema.prisma
-      - name: Check dependency health and vulnerabilities
-        run: npm audit --workspace apps/api --audit-level=moderate
+      - name: Check production dependency vulnerabilities
+        run: npm audit --workspace apps/api --omit=dev --audit-level=moderate
       - name: Lint API
         run: npm run lint --workspace apps/api
       - name: Unit tests

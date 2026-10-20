@@ -139,7 +139,7 @@ export class PaymentsController {
     type: GetPaymentResponseDto,
   })
   @ApiResponse({
-    status: 400,
+    status: 422,
     description: 'El ID del pago debe ser un UUID válido.',
     type: PaymentErrorResponseDto,
   })

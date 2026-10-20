@@ -10,6 +10,7 @@
     { "key": "tenantId", "value": "" },
     { "key": "apiKey", "value": "" },
     { "key": "adminToken", "value": "" },
+    { "key": "ownerToken", "value": "" },
     { "key": "invitationToken", "value": "" },
     { "key": "ownerEmail", "value": "owner@example.test" },
     { "key": "ownerPassword", "value": "" },
@@ -318,6 +319,96 @@
             },
             "url": "{{webhookReceiverUrl}}",
             "description": "Esta llamada apunta al receptor implementado por el comercio, no a un endpoint entrante de FrogPay. Genera webhookSignature usando el secreto y el body exacto."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard y plataforma",
+      "item": [
+        {
+          "name": "Consultar log de auditoría",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Auditoría consultada (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Respuesta paginada con campos de auditoría', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.be.an('array');",
+                  "  pm.expect(body.page).to.be.a('number');",
+                  "  pm.expect(body.limit).to.be.a('number');",
+                  "  pm.expect(body.total).to.be.a('number');",
+                  "  pm.expect(body.totalPages).to.be.a('number');",
+                  "  if (body.data.length > 0) {",
+                  "    pm.expect(body.data[0]).to.include.all.keys('eventId', 'entity', 'entityId', 'action', 'previousState', 'newState', 'actor', 'requestId', 'environment', 'createdAt');",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/dashboard/audit-logs?page=1&limit=25",
+            "description": "Solo permite rol OWNER."
+          }
+        },
+        {
+          "name": "Consultar métricas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Métricas consultadas (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Incluye métricas y serie de siete días', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.include.all.keys('from', 'to', 'environment', 'currency', 'volume', 'transactionCount', 'approvalRate', 'commissionAmount', 'netAmount', 'byMethod', 'dailySeries', 'generatedAt');",
+                  "  pm.expect(body.environment).to.eql('sandbox');",
+                  "  pm.expect(body.dailySeries).to.be.an('array').with.lengthOf(7);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ownerToken}}" }],
+            "url": "{{baseUrl}}/dashboard/metrics?days=7&environment=sandbox",
+            "description": "La implementación admite los roles OWNER, OPERATOR y VIEWER."
+          }
+        },
+        {
+          "name": "Estado de la plataforma",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estado consultado (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Incluye dependencias y contadores de plataforma', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.be.oneOf(['ok', 'degraded']);",
+                  "  pm.expect(body.timestamp).to.be.a('string');",
+                  "  pm.expect(body.services).to.be.an('object');",
+                  "  pm.expect(body.circuitBreakers).to.be.an('array');",
+                  "  pm.expect(body.outbox).to.have.property('pending');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/admin/platform-status",
+            "description": "Solo permite rol PLATFORM_ADMIN."
           }
         }
       ]

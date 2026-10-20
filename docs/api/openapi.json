@@ -260,7 +260,7 @@
               }
             }
           },
-          "400": {
+          "422": {
             "description": "El ID no es UUID.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "validation_error", "message": "El ID del pago debe ser un UUID válido.", "details": null, "requestId": "req_8a22" } } }
           },
@@ -351,6 +351,147 @@
         }
       }
     },
+    "/dashboard/audit-logs": {
+      "get": {
+        "tags": ["Dashboard - Auditoría"],
+        "summary": "Consultar el log de auditoría del tenant actual",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "example": 1 },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }, "example": 25 },
+          { "name": "paymentId", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" }, "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391" },
+          { "name": "action", "in": "query", "required": false, "schema": { "type": "string" }, "example": "pago.aprobado" },
+          { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "example": "2026-10-18T00:00:00.000Z" },
+          { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "example": "2026-10-20T00:00:00.000Z" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados paginados, ordenados por fecha descendente. Requiere rol OWNER.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuditLogPage" },
+                "example": {
+                  "data": [{
+                    "eventId": "9e84723b-ec5f-4bb8-a665-000000000001",
+                    "entity": "payment",
+                    "entityId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+                    "action": "pago.aprobado",
+                    "previousState": { "status": "pending" },
+                    "newState": { "status": "approved" },
+                    "actor": { "type": "system" },
+                    "requestId": "req_audit_123",
+                    "environment": "sandbox",
+                    "createdAt": "2026-10-19T12:00:00.000Z"
+                  }],
+                  "page": 1,
+                  "limit": 25,
+                  "total": 1,
+                  "totalPages": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a42" } } }
+          },
+          "403": {
+            "description": "El endpoint requiere rol OWNER.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Acceso denegado: se requiere el rol OWNER.", "details": null, "requestId": "req_8a43" } } }
+          }
+        }
+      }
+    },
+    "/dashboard/metrics": {
+      "get": {
+        "tags": ["Dashboard - Métricas"],
+        "summary": "Obtener métricas agregadas del tenant",
+        "description": "Acepta días 7 o 30 y ambiente sandbox o production. El resultado se cachea durante 300 segundos. Los roles configurados en el controlador son OWNER, OPERATOR y VIEWER.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "days", "in": "query", "required": true, "schema": { "type": "integer", "enum": [7, 30] }, "example": 7 },
+          { "name": "environment", "in": "query", "required": true, "schema": { "type": "string", "enum": ["sandbox", "production"] }, "example": "sandbox" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agregados del tenant autenticado. dailySeries contiene exactamente un elemento por día.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DashboardMetrics" },
+                "example": {
+                  "from": "2026-10-13",
+                  "to": "2026-10-19",
+                  "environment": "sandbox",
+                  "currency": "BOB",
+                  "volume": "150.00",
+                  "transactionCount": 2,
+                  "approvalRate": 0.5,
+                  "commissionAmount": "5.25",
+                  "netAmount": "144.75",
+                  "byMethod": [{ "paymentMethod": "card", "transactionCount": 2, "approvedCount": 1, "volume": "150.00" }],
+                  "dailySeries": [
+                    { "date": "2026-10-13", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-14", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-15", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-16", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-17", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-18", "transactionCount": 1, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 1, "approvalRate": 0 },
+                    { "date": "2026-10-19", "transactionCount": 1, "volume": "150.00", "approvedCount": 1, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 1 }
+                  ],
+                  "generatedAt": "2026-10-19T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a44" } } }
+          },
+          "403": {
+            "description": "Rol no permitido. La ruta admite OWNER, OPERATOR o VIEWER.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Acceso denegado: rol no permitido.", "details": null, "requestId": "req_8a45" } } }
+          }
+        }
+      }
+    },
+    "/admin/platform-status": {
+      "get": {
+        "tags": ["Platform Status"],
+        "summary": "Consultar el estado interno de FrogPay",
+        "description": "Requiere rol PLATFORM_ADMIN. La implementación actual informa status ok o degraded, servicios, circuitBreakers y el conteo pending del outbox.",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Estado y dependencias de la plataforma.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlatformStatus" },
+                "example": {
+                  "status": "ok",
+                  "timestamp": "2026-10-19T12:00:00.000Z",
+                  "services": {
+                    "api": { "status": "up", "uptime": 120 },
+                    "database": { "status": "up", "type": "postgresql", "latencyMs": 2 },
+                    "eventBus": { "status": "up", "provider": "rabbitmq" },
+                    "redis": { "status": "up" }
+                  },
+                  "circuitBreakers": [{ "provider": "stripe", "state": "closed", "failures": 0 }],
+                  "outbox": { "pending": 0 }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a46" } } }
+          },
+          "403": {
+            "description": "Solo PLATFORM_ADMIN está habilitado por el controlador actual.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Se requiere el rol PLATFORM_ADMIN.", "details": null, "requestId": "req_8a47" } } }
+          }
+        }
+      }
+    },
     "/dashboard/payments": {
       "get": {
         "tags": ["Dashboard - Pagos"],
@@ -359,7 +500,7 @@
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "example": 1 },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 25 }, "example": 25 },
-          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "approved", "rejected", "failed"] }, "example": "approved" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "approved", "rejected", "failed", "expired", "refunded", "partially_refunded"] }, "example": "approved" },
           { "name": "paymentMethod", "in": "query", "schema": { "type": "string" }, "example": "card" },
           { "name": "environment", "in": "query", "schema": { "type": "string", "enum": ["sandbox", "production"] }, "example": "production" }
         ],
@@ -659,6 +800,58 @@
           "mode": { "type": "string", "enum": ["error", "latency"] },
           "durationSeconds": { "type": "integer", "minimum": 1, "maximum": 600, "example": 120 },
           "latencyMs": { "type": "integer", "minimum": 100, "maximum": 10000, "example": 5000 }
+        }
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "eventId": { "type": "string", "format": "uuid" },
+          "entity": { "type": "string", "example": "payment" },
+          "entityId": { "type": "string", "format": "uuid", "nullable": true },
+          "action": { "type": "string", "example": "pago.aprobado" },
+          "previousState": { "nullable": true, "example": { "status": "pending" } },
+          "newState": { "nullable": true, "example": { "status": "approved" } },
+          "actor": { "type": "object", "additionalProperties": true },
+          "requestId": { "type": "string", "nullable": true },
+          "environment": { "type": "string", "enum": ["sandbox", "production"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuditLogPage": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLogEntry" } },
+          "page": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "total": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      },
+      "DashboardMetrics": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string", "format": "date" },
+          "to": { "type": "string", "format": "date" },
+          "environment": { "type": "string", "enum": ["sandbox", "production"] },
+          "currency": { "type": "string", "example": "BOB" },
+          "volume": { "type": "string", "example": "150.00" },
+          "transactionCount": { "type": "integer" },
+          "approvalRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "commissionAmount": { "type": "string", "example": "5.25" },
+          "netAmount": { "type": "string", "example": "144.75" },
+          "byMethod": { "type": "array", "items": { "type": "object", "properties": { "paymentMethod": { "type": "string" }, "transactionCount": { "type": "integer" }, "approvedCount": { "type": "integer" }, "volume": { "type": "string" } } } },
+          "dailySeries": { "type": "array", "items": { "type": "object", "properties": { "date": { "type": "string", "format": "date" }, "transactionCount": { "type": "integer" }, "volume": { "type": "string" }, "approvedCount": { "type": "integer" }, "rejectedCount": { "type": "integer" }, "failedCount": { "type": "integer" }, "pendingCount": { "type": "integer" }, "approvalRate": { "type": "number" } } } },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PlatformStatus": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded"] },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "services": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": true } },
+          "circuitBreakers": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "outbox": { "type": "object", "properties": { "pending": { "type": "integer", "nullable": true } } }
         }
       },
       "ApiError": {

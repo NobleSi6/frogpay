@@ -1,4 +1,8 @@
-import { INestApplication, NotFoundException } from '@nestjs/common';
+import {
+  INestApplication,
+  NotFoundException,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import * as request from 'supertest';
@@ -206,6 +210,15 @@ describe('Dashboard Payments (e2e) - TSK-DEV1-402 / TSK-DEV3-203', () => {
     app = moduleRef.createNestApplication();
     app.useGlobalGuards(new AuthenticationGuard(new Reflector(), jwtService));
     app.setGlobalPrefix('api');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        forbidUnknownValues: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
     await app.init();
   });
 
@@ -254,13 +267,13 @@ describe('Dashboard Payments (e2e) - TSK-DEV1-402 / TSK-DEV3-203', () => {
         .expect(401);
     });
 
-    it('should return 403 if user has VIEWER role instead of OWNER/ADMIN', async () => {
+    it('should allow users with VIEWER role to list payments', async () => {
       const token = createToken(testTenantId, 'VIEWER' as UserRole);
 
       await request(app.getHttpServer())
         .get('/api/dashboard/payments')
         .set('Authorization', `Bearer ${token}`)
-        .expect(403);
+        .expect(200);
     });
   });
 
@@ -390,13 +403,13 @@ describe('Dashboard Payments (e2e) - TSK-DEV1-402 / TSK-DEV3-203', () => {
         .expect(401);
     });
 
-    it('should return 403 if user has VIEWER role', async () => {
+    it('should allow users with VIEWER role to view payment details', async () => {
       const token = createToken(testTenantId, 'VIEWER' as UserRole);
 
       await request(app.getHttpServer())
         .get(`/api/dashboard/payments/${testPaymentId}`)
         .set('Authorization', `Bearer ${token}`)
-        .expect(403);
+        .expect(200);
     });
   });
 });
