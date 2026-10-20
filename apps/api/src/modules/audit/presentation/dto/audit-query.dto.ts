@@ -8,16 +8,16 @@ import {
   Max,
   Min,
 } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AuditLogQueryDto {
-  @ApiPropertyOptional({ default: 1 })
+  @ApiPropertyOptional({ type: Number, default: 1 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
   page = 1;
 
-  @ApiPropertyOptional({ default: 25, maximum: 100 })
+  @ApiPropertyOptional({ type: Number, default: 25, maximum: 100 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -46,7 +46,7 @@ export class AuditLogQueryDto {
 }
 
 export class VerifyAuditQueryDto {
-  @ApiPropertyOptional({ format: 'uuid', required: true })
+  @ApiProperty({ format: 'uuid' })
   @IsUUID()
   tenantId!: string;
 }
