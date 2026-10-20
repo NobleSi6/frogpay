@@ -6,6 +6,7 @@ import { LoaderCircle } from "lucide-react";
 import { routeForRole, setSession, type AuthRole, useAuthSession } from "../auth-session";
 import { validateSession } from "../services/login-service";
 import { SPRINT1_DEMO_MODE } from "@/lib/demo-mode";
+import { ApiError } from "@/lib/api-client";
 
 export function AuthGuard({ role, children }: { role: AuthRole; children: ReactNode }) {
   const router = useRouter();
@@ -15,7 +16,10 @@ export function AuthGuard({ role, children }: { role: AuthRole; children: ReactN
   useEffect(() => {
     if (!SPRINT1_DEMO_MODE && session?.accessToken && session.accessToken !== "demo" && validatedToken.current !== session.accessToken) {
       validatedToken.current = session.accessToken;
-      void validateSession().catch(() => setSession(null));
+      // Solo un 401 invalida la sesión; un abort o error de red no debe desloguear al usuario.
+      void validateSession().catch((error: unknown) => {
+        if (error instanceof ApiError && error.status === 401) setSession(null);
+      });
     }
   }, [session?.accessToken]);
 

@@ -77,7 +77,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** America/La_Paz es UTC-4 sin horario de verano: la medianoche local es 04:00 UTC. */
 const LA_PAZ_OFFSET_MS = 4 * 60 * 60 * 1000;
 
-function parseDay(day: string): number | null {
+export function parseDay(day: string): number | null {
   if (!DAY_PATTERN.test(day)) return null;
   const [year, month, date] = day.split("-").map(Number);
   const timestamp = Date.UTC(year, month - 1, date);
@@ -88,7 +88,7 @@ function parseDay(day: string): number | null {
   return timestamp;
 }
 
-function formatDay(timestamp: number): string {
+export function formatDay(timestamp: number): string {
   const date = new Date(timestamp);
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");

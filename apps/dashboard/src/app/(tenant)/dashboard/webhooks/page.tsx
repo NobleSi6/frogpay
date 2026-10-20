@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Copy, Loader2, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
+import { Copy, Loader2, Plus, RefreshCw, Send, Trash2, Webhook } from "lucide-react";
 import { ErrorAlert } from "@/components/shared/error-alert";
+import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import {
   useWebhookEndpoints,
 } from "@/features/webhooks/hooks/useWebhooks";
 import type {
+  WebhookDelivery,
   WebhookDeliveryStatus,
   WebhookEnvironment,
   WebhookEvent,
@@ -28,16 +30,31 @@ function formatDate(value: string) {
   return new Date(value).toLocaleString("es-BO", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function deliveryStatusLabel(status: WebhookDeliveryStatus) {
+function deliveryStatusLabel(status: WebhookDeliveryStatus, attemptCount = 0) {
   if (status === "delivered") return "Entregado";
   if (status === "failed") return "Fallido";
-  return "Pendiente";
+  return attemptCount > 0 ? "Reintentando" : "Pendiente";
 }
 
 function deliveryStatusStyle(status: WebhookDeliveryStatus) {
   if (status === "delivered") return "bg-emerald-50 text-emerald-700 border-emerald-200";
   if (status === "failed") return "bg-red-50 text-red-700 border-red-200";
   return "bg-amber-50 text-amber-700 border-amber-200";
+}
+
+function eventGroupKey(delivery: WebhookDelivery) {
+  return delivery.eventId ?? `${delivery.eventType}-${delivery.createdAt}`;
+}
+
+function groupDeliveriesByEvent(deliveries: WebhookDelivery[]) {
+  const groups = new Map<string, WebhookDelivery[]>();
+  for (const delivery of deliveries) {
+    const key = eventGroupKey(delivery);
+    const group = groups.get(key);
+    if (group) group.push(delivery);
+    else groups.set(key, [delivery]);
+  }
+  return Array.from(groups.values());
 }
 
 export default function WebhooksPage() {
@@ -102,13 +119,12 @@ export default function WebhooksPage() {
   };
 
   return (
-    <section className="mx-auto max-w-5xl space-y-6" aria-labelledby="webhooks-title">
-      <header className="space-y-2">
-        <h1 id="webhooks-title" className="text-2xl font-bold tracking-tight">Webhooks</h1>
-        <p className="text-sm text-muted-foreground">
-          Configura los destinos para eventos de pago y consulta el historial de entregas.
-        </p>
-      </header>
+    <section className="mx-auto max-w-6xl space-y-6" aria-labelledby="webhooks-title">
+      <PageHeader
+        title="Webhooks"
+        description="Configura los destinos para eventos de pago y consulta el historial de entregas."
+        icon={Webhook}
+      />
 
       {actionError !== null && <ErrorAlert error={actionError} title="No pudimos completar la acción" />}
       {notice && <p role="status" className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
@@ -272,7 +288,9 @@ export default function WebhooksPage() {
         <CardHeader>
           <CardTitle>Historial de entregas</CardTitle>
           <CardDescription>
-            {deliveries.data ? `${deliveries.data.total} entregas registradas` : "Últimas entregas de webhooks."}
+            {deliveries.data ? `${deliveries.data.total} entregas registradas. ` : "Últimas entregas de webhooks. "}
+            Cada evento se envía a todos los endpoints suscritos: hay una fila por endpoint, no por reintento.
+            Un fallo de entrega no cambia el estado del pago.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -281,52 +299,100 @@ export default function WebhooksPage() {
           {deliveries.data?.data.length === 0 && (
             <p className="text-sm text-muted-foreground">Todavía no hay entregas registradas.</p>
           )}
-          {deliveries.data?.data.map((delivery) => (
-            <div key={delivery.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-              <div className="min-w-0 space-y-1">
-                <p className="font-mono text-sm">{delivery.eventType}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDate(delivery.createdAt)} · {delivery.attemptCount} intentos
-                  {delivery.responseCode !== null ? ` · HTTP ${delivery.responseCode}` : ""}
-                </p>
-                {delivery.lastError && <p className="break-all text-xs text-destructive">{delivery.lastError}</p>}
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className={deliveryStatusStyle(delivery.status)}>
-                  {deliveryStatusLabel(delivery.status)}
-                </Badge>
-                {delivery.status === "failed" && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={deliveries.isRetrying}
-                    onClick={() => void runEndpointAction(
-                      () => deliveries.retryDelivery(delivery.id),
-                      "Reintento encolado.",
-                    )}
-                  >
-                    {deliveries.isRetrying ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <RefreshCw aria-hidden className="size-3.5" />}
-                    Reintentar
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelectedDeliveryId((current) => current === delivery.id ? "" : delivery.id)}
-                >
-                  {selectedDeliveryId === delivery.id ? "Ocultar detalle" : "Ver detalle"}
-                </Button>
-              </div>
+          {deliveries.data && deliveries.data.data.length > 0 && (
+            <div className="space-y-3">
+              {groupDeliveriesByEvent(deliveries.data.data).map((group) => {
+                const first = group[0];
+                const delivered = group.filter((delivery) => delivery.status === "delivered").length;
+                const failed = group.filter((delivery) => delivery.status === "failed").length;
+                const pending = group.filter((delivery) => delivery.status === "pending").length;
+                return (
+                  <article key={eventGroupKey(first)} className="space-y-3 rounded-lg border p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-mono text-sm">{first.eventType}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(first.createdAt)} · {group.length} {group.length === 1 ? "endpoint" : "endpoints"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {delivered > 0 && (
+                          <Badge variant="outline" className={deliveryStatusStyle("delivered")}>
+                            {delivered} entregado{delivered === 1 ? "" : "s"}
+                          </Badge>
+                        )}
+                        {failed > 0 && (
+                          <Badge variant="outline" className={deliveryStatusStyle("failed")}>
+                            {failed} fallido{failed === 1 ? "" : "s"}
+                          </Badge>
+                        )}
+                        {pending > 0 && (
+                          <Badge variant="outline" className={deliveryStatusStyle("pending")}>
+                            {pending} pendiente{pending === 1 ? "" : "s"}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {group.map((delivery) => (
+                        <div
+                          key={delivery.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/30 p-2"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <p className="break-all text-xs font-medium">{delivery.webhookUrl}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {delivery.attemptCount === 1 ? "1 intento" : `${delivery.attemptCount} intentos`}
+                              {delivery.responseCode !== null ? ` · HTTP ${delivery.responseCode}` : ""}
+                            </p>
+                            {delivery.lastError && <p className="break-all text-xs text-destructive">{delivery.lastError}</p>}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className={deliveryStatusStyle(delivery.status)}>
+                              {deliveryStatusLabel(delivery.status, delivery.attemptCount)}
+                            </Badge>
+                            {delivery.status === "failed" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={deliveries.isRetrying}
+                                onClick={() => void runEndpointAction(
+                                  () => deliveries.retryDelivery(delivery.id),
+                                  "Reintento encolado.",
+                                )}
+                              >
+                                {deliveries.isRetrying ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <RefreshCw aria-hidden className="size-3.5" />}
+                                Reintentar
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setSelectedDeliveryId((current) => current === delivery.id ? "" : delivery.id)}
+                            >
+                              {selectedDeliveryId === delivery.id ? "Ocultar detalle" : "Ver detalle"}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-          ))}
+          )}
           {selectedDeliveryId && (
             <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
               {deliveryDetail.isLoading && <p className="text-sm text-muted-foreground">Cargando detalle...</p>}
               {deliveryDetail.isError && <ErrorAlert error={deliveryDetail.error} title="No pudimos cargar el detalle de la entrega" />}
               {deliveryDetail.data && (
                 <>
+                  <div>
+                    <h3 className="text-sm font-semibold">Endpoint</h3>
+                    <p className="mt-1 break-all text-xs text-muted-foreground">{deliveryDetail.data.webhookUrl}</p>
+                  </div>
                   <div>
                     <h3 className="text-sm font-semibold">Payload enviado</h3>
                     <pre className="mt-2 max-h-64 overflow-auto rounded bg-background p-3 text-xs">

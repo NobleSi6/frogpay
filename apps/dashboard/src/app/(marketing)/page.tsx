@@ -2,6 +2,7 @@ import { Header } from "@/features/landing/components/Header"
 import { HeroSection } from "@/features/landing/components/HeroSection"
 import { AboutSection } from "@/features/landing/components/AboutSection"
 import { ServicesSection } from "@/features/landing/components/ServicesSection"
+import { PlansSection } from "@/features/landing/components/PlansSection"
 import { TestimonialsSection } from "@/features/landing/components/TestimonialsSection"
 import { Footer } from "@/features/landing/components/Footer"
 
@@ -14,6 +15,7 @@ export default function MarketingPage() {
         <HeroSection />
         <AboutSection />
         <ServicesSection />
+        <PlansSection />
         <TestimonialsSection />
       </main>
 

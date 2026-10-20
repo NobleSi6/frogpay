@@ -71,6 +71,8 @@ export function useWebhookDeliveries(filters: WebhookDeliveriesFilters = {}) {
   const query = useQuery({
     queryKey: [...deliveriesQueryKey, filters],
     queryFn: () => webhooksService.listDeliveries(filters),
+    refetchInterval: (current) =>
+      current.state.data?.data.some((delivery) => delivery.status === "pending") ? 5000 : false,
   });
 
   const retryMutation = useMutation({

@@ -88,6 +88,7 @@ export class TestEventResponseDto {
 export class WebhookDeliveryResponseDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ format: 'uuid' }) webhookId: string;
+  @ApiProperty({ example: 'https://mi-tienda.com/webhooks/frogpay' }) webhookUrl: string;
   @ApiProperty({ format: 'uuid', nullable: true }) paymentId: string | null;
   @ApiProperty({ format: 'uuid', nullable: true }) eventId: string | null;
   @ApiProperty() eventType: string;

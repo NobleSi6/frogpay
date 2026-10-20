@@ -7,4 +7,5 @@ export interface TenantPlanStatus {
   txCount: number;
   remaining: string | null;
   limitReached: boolean;
+  planExpiresAt: string | null;
 }

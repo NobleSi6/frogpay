@@ -12,6 +12,7 @@ import {
 type DeliveryRow = {
   id: string;
   webhook_id: string;
+  webhook: { url: string };
   payment_id: string | null;
   event_id: string | null;
   event_type: string;
@@ -87,6 +88,7 @@ function toDelivery(row: DeliveryRow): WebhookDeliveryResponseDto {
   return {
     id: row.id,
     webhookId: row.webhook_id,
+    webhookUrl: row.webhook.url,
     paymentId: row.payment_id,
     eventId: row.event_id,
     eventType: row.event_type,

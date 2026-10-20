@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Copy, LoaderCircle } from "lucide-react";
+import { Copy, KeyRound, LoaderCircle } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -110,8 +111,7 @@ export function ApiKeysScreen() {
   function field(label: string, value: string, id: string) {
     return <div className="space-y-2"><Label htmlFor={id}>{label}</Label><div className="flex gap-2"><Input id={id} readOnly value={value} className="h-11 min-w-0 font-mono text-sm" autoComplete="off" /><Button variant="outline" className="size-11" aria-label={`Copiar ${label}`} disabled={loading || copying} onClick={() => void copy(value)}><Copy aria-hidden /></Button></div></div>;
   }
-  return <section className="space-y-6"><h1 className="text-h3 font-semibold">API Keys</h1>
-    <p className="text-sm text-muted-foreground">{realReady ? "Credenciales reales de tu tenant. La API devuelve un identificador enmascarado y el secret únicamente al generar o regenerar." : "Credenciales ficticias para probar el flujo visual. No permiten acceder a la API."}</p>
+  return <section className="space-y-6"><PageHeader title="API Keys" description={realReady ? "Credenciales reales de tu tenant. La API devuelve un identificador enmascarado y el secret únicamente al generar o regenerar." : "Credenciales ficticias para probar el flujo visual. No permiten acceder a la API."} icon={KeyRound} />
     {error && !action && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {message && <Alert role="status"><AlertDescription>{message}</AlertDescription></Alert>}
     {loading && <p role="status" className="flex items-center gap-2"><LoaderCircle aria-hidden className="size-4 animate-spin" />Procesando credenciales…</p>}

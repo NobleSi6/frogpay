@@ -26,6 +26,12 @@ type TransactionsPaginationProps = {
   isFetching: boolean;
   onPageChange: (page: number) => void;
   onLimitChange: (limit: number) => void;
+  /** Etiqueta accesible del nav de paginación (por defecto, transacciones). */
+  ariaLabel?: string;
+  /** id del select de tamaño de página (por defecto, transacciones). */
+  selectId?: string;
+  /** Opciones de tamaño de página (por defecto, las de transacciones). */
+  sizeOptions?: readonly number[];
 };
 
 export function TransactionsPagination({
@@ -36,6 +42,9 @@ export function TransactionsPagination({
   isFetching,
   onPageChange,
   onLimitChange,
+  ariaLabel = "Paginación de transacciones",
+  selectId = "tx-page-size",
+  sizeOptions = PAGE_SIZE_OPTIONS,
 }: TransactionsPaginationProps) {
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
   const to = total === 0 ? 0 : Math.min(page * limit, total);
@@ -48,16 +57,16 @@ export function TransactionsPagination({
           {groupThousands(String(total))}
         </p>
         <div className="flex items-center gap-2">
-          <label htmlFor="tx-page-size" className="text-xs">
+          <label htmlFor={selectId} className="text-xs">
             Filas por página
           </label>
           <select
-            id="tx-page-size"
+            id={selectId}
             className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             value={limit}
             onChange={(event) => onLimitChange(Number(event.target.value))}
           >
-            {PAGE_SIZE_OPTIONS.map((option) => (
+            {sizeOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -66,7 +75,7 @@ export function TransactionsPagination({
         </div>
       </div>
 
-      <nav aria-label="Paginación de transacciones" className="flex items-center gap-1">
+      <nav aria-label={ariaLabel} className="flex items-center gap-1">
         <Button
           type="button"
           variant="outline"

@@ -2,13 +2,17 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Calendar, Filter } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorAlert } from '@/components/shared/error-alert';
 import { useReconciliation } from '../hooks/useReconciliation';
-import { ReconciliationStatus } from '../services/reconciliation.service';
+import {
+  ReconciliationStatus,
+  type BankTransactionFilters,
+  type BankTransactionStatusFilter,
+} from '../services/reconciliation.service';
 
 const statusConfig: Record<ReconciliationStatus, { label: string; className: string }> = {
   CONCILIATED: {
@@ -29,24 +33,74 @@ const statusConfig: Record<ReconciliationStatus, { label: string; className: str
   },
 };
 
+const statusFilters: { value: BankTransactionStatusFilter | ''; label: string }[] = [
+  { value: '', label: 'Todos los estados' },
+  { value: 'reconciled', label: 'Conciliado' },
+  { value: 'unmatched', label: 'Sin referencia' },
+  { value: 'amount_mismatch', label: 'Monto distinto' },
+  { value: 'currency_mismatch', label: 'Moneda distinta' },
+];
+
 export function BankReconciliationTable() {
   const [page, setPage] = useState(1);
-  const { transactions, pagination, isLoading, isError, error } = useReconciliation(page);
+  const [status, setStatus] = useState<BankTransactionStatusFilter | ''>('');
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null);
+
+  const filters: BankTransactionFilters = {
+    status: status || undefined,
+    from: range?.from,
+    to: range?.to,
+  };
+  const { transactions, pagination, isLoading, isError, error } = useReconciliation(page, filters);
+
+  function applyStatus(next: BankTransactionStatusFilter | '') {
+    setStatus(next);
+    setPage(1);
+  }
+
+  function toggleLast30Days() {
+    if (range) {
+      setRange(null);
+    } else {
+      const to = new Date();
+      const from = new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+      setRange({ from: from.toISOString(), to: to.toISOString() });
+    }
+    setPage(1);
+  }
 
   return (
     <Card className="shadow-sm border-slate-200/80 rounded-2xl bg-white">
-      <CardHeader className="flex flex-row items-center justify-between pb-6">
+      <CardHeader className="flex flex-col gap-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-lg font-bold text-slate-900">
           Conciliacion Bancaria
         </CardTitle>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-9 gap-2 text-xs text-slate-600 font-normal">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="reconciliation-status" className="sr-only">
+            Filtrar por estado
+          </label>
+          <select
+            id="reconciliation-status"
+            value={status}
+            onChange={(event) => applyStatus(event.target.value as BankTransactionStatusFilter | '')}
+            className="h-9 rounded-md border border-input bg-background px-3 text-xs text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {statusFilters.map((option) => (
+              <option key={option.value || 'all'} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-pressed={range !== null}
+            onClick={toggleLast30Days}
+            className="h-9 gap-2 text-xs text-slate-600 font-normal"
+          >
             <Calendar className="h-3.5 w-3.5 text-slate-500" />
-            Ultimos 30 dias
-          </Button>
-          <Button variant="outline" size="sm" className="h-9 gap-2 text-xs text-slate-600 font-normal">
-            <Filter className="h-3.5 w-3.5 text-slate-500" />
-            Filtrar
+            {range ? 'Quitar últimos 30 días' : 'Últimos 30 días'}
           </Button>
         </div>
       </CardHeader>
@@ -61,11 +115,11 @@ export function BankReconciliationTable() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-y border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                <th className="py-3 px-6">Referencia</th>
-                <th className="py-3 px-6">Fecha</th>
-                <th className="py-3 px-6">Banco</th>
-                <th className="py-3 px-6 text-right">Monto</th>
-                <th className="py-3 px-6 text-center">Estado</th>
+                <th scope="col" className="py-3 px-6">Referencia</th>
+                <th scope="col" className="py-3 px-6">Fecha</th>
+                <th scope="col" className="py-3 px-6">Banco</th>
+                <th scope="col" className="py-3 px-6 text-right">Monto</th>
+                <th scope="col" className="py-3 px-6 text-center">Estado</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
@@ -78,7 +132,7 @@ export function BankReconciliationTable() {
               ) : transactions.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">
-                    No se encontraron depósitos.
+                    No se encontraron depósitos con los filtros seleccionados.
                   </td>
                 </tr>
               ) : (
@@ -88,7 +142,7 @@ export function BankReconciliationTable() {
                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-4 px-6 font-semibold text-slate-800">
                         {item.paymentId ? (
-                          <Link 
+                          <Link
                             href={`/dashboard/pagos/${encodeURIComponent(item.paymentId)}`}
                             className="hover:underline text-slate-900"
                           >

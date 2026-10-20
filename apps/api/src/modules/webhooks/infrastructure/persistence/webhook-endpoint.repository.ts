@@ -144,6 +144,7 @@ export class WebhookEndpointRepository {
           orderBy: { created_at: 'desc' },
           skip: (filters.page - 1) * filters.pageSize,
           take: filters.pageSize,
+          include: { webhook: { select: { url: true } } },
         }),
         tx.webhook_delivery.count({ where }),
       ]);
@@ -155,7 +156,10 @@ export class WebhookEndpointRepository {
     return this.db.withTenant(tenantId, (tx) =>
       tx.webhook_delivery.findFirst({
         where: { id: deliveryId, tenant_id: tenantId },
-        include: { attempts: { orderBy: { attempt_number: 'asc' } } },
+        include: {
+          webhook: { select: { url: true } },
+          attempts: { orderBy: { attempt_number: 'asc' } },
+        },
       }),
     );
   }

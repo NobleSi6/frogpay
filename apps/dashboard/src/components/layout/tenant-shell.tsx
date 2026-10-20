@@ -1,94 +1,75 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Home, CreditCard, KeyRound, LogOut, ReceiptText, Webhook, Settings, Scale } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import {
+  CreditCard,
+  Home,
+  KeyRound,
+  ReceiptText,
+  Scale,
+  ScrollText,
+  Settings,
+  Sparkles,
+  Store,
+  Webhook,
+} from "lucide-react";
 import type { ReactNode } from "react";
-import { BrandLogo } from "@/components/brand-logo";
-import { Button } from "@/components/ui/button";
 import { EnvironmentBadge, SandboxBanner } from "@/components/shared/environment-indicator";
-import { setSession, useAuthSession } from "@/features/auth/auth-session";
 import { useTenantEnvironment } from "@/features/provider-credentials/environment-context";
+import { AppShell, type ShellNavGroup } from "./app-shell";
 
-type NavItem = {
-  href: string;
-  label: string;
-  Icon: LucideIcon;
-  exact?: boolean;
-  nested?: boolean;
-};
+const isPaymentFlow = (pathname: string) =>
+  pathname === "/dashboard/pagos" ||
+  (pathname.startsWith("/dashboard/pagos/") &&
+    !pathname.startsWith("/dashboard/pagos/transacciones") &&
+    !pathname.startsWith("/dashboard/pagos/conciliacion"));
 
-const links: NavItem[] = [
-  { href: "/dashboard", label: "Inicio", Icon: Home, exact: true },
-  { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, exact: true },
-  { href: "/dashboard/pagos/transacciones", label: "Transacciones", Icon: ReceiptText, exact: true, nested: true },
-  { href: "/dashboard/pagos/conciliacion", label: "Conciliación", Icon: Scale, exact: false },
-  { href: "/dashboard/api-keys", label: "API Keys", Icon: KeyRound, exact: false },
-  { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook, exact: false },
-  { href: "/dashboard/configuracion", label: "Configuración", Icon: Settings, exact: false },
+const groups: ShellNavGroup[] = [
+  {
+    label: "Operación",
+    items: [
+      { href: "/dashboard", label: "Inicio", Icon: Home, exact: true },
+      { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, matches: isPaymentFlow },
+      {
+        href: "/dashboard/pagos/transacciones",
+        label: "Transacciones",
+        Icon: ReceiptText,
+        exact: true,
+        nested: true,
+      },
+      { href: "/dashboard/pagos/conciliacion", label: "Conciliación", Icon: Scale },
+    ],
+  },
+  {
+    label: "Desarrollo",
+    items: [
+      { href: "/dashboard/auditoria", label: "Auditoría", Icon: ScrollText },
+      { href: "/dashboard/api-keys", label: "API Keys", Icon: KeyRound },
+      { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook },
+    ],
+  },
+  {
+    label: "Cuenta",
+    items: [
+      { href: "/dashboard/configuracion/proveedores", label: "Proveedores", Icon: Store },
+      { href: "/dashboard/plan", label: "Plan", Icon: Sparkles },
+      { href: "/dashboard/configuracion", label: "Configuración", Icon: Settings, exact: true },
+    ],
+  },
 ];
 
 export function TenantShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const session = useAuthSession();
   const { environment } = useTenantEnvironment();
 
-  function logout() { 
-    setSession(null); 
-    router.replace("/login"); 
-  }
-
   return (
-    <div className="min-h-dvh md:flex">
-      <aside className="bg-neutral-900 p-5 text-neutral-100 md:sticky md:top-0 md:flex md:h-dvh md:w-64 md:shrink-0 md:flex-col">
-        <Link href="/dashboard" aria-label="Inicio de FrogPay" className="mb-6 inline-flex w-full items-center">
-          <BrandLogo className="h-auto w-full" priority />
-        </Link>
-        <nav aria-label="Tenant" className="flex flex-wrap gap-2 md:flex-col">
-          {links.map(({ href, label, Icon, exact, nested }) => {
-            const active = exact 
-              ? pathname === href 
-              : pathname.startsWith(href);
-
-            return (
-              <Link 
-                key={href} 
-                href={href} 
-                aria-current={active ? "page" : undefined} 
-                className={`flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring ${
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : `hover:bg-neutral-800 ${nested ? "text-neutral-300 pl-6 md:pl-11" : ""}`
-                }`}
-              >
-                <Icon aria-hidden className="size-5" />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-        <p className="mt-6 text-xs text-neutral-400 md:mt-auto">Tenant Owner</p>
-      </aside>
-
-      <div className="min-w-0 flex-1">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-4 sm:px-8">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold">{session?.user.tenant?.name}</span>
-            <EnvironmentBadge environment={environment} />
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{session?.user.email}</span>
-            <Button variant="ghost" className="min-h-11" onClick={logout}>
-              <LogOut aria-hidden />
-              Cerrar sesión
-            </Button>
-          </div>
-        </header>
-        <SandboxBanner environment={environment} />
-        <main className="mx-auto max-w-6xl p-4 sm:p-8">{children}</main>
-      </div>
-    </div>
+    <AppShell
+      groups={groups}
+      brandHref="/dashboard"
+      areaLabel="Tenant Owner"
+      footerLabel="Tenant Owner"
+      headerStatus={<EnvironmentBadge environment={environment} />}
+      banner={<SandboxBanner environment={environment} />}
+    >
+      {children}
+    </AppShell>
   );
 }

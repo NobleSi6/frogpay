@@ -6,26 +6,23 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
   immediate = false
 ) {
   const ref = React.useRef<T | null>(null)
-  const [isVisible, setIsVisible] = React.useState(false)
+  const [visible, setVisible] = React.useState(false)
 
   React.useEffect(() => {
-    if (immediate) {
-      setIsVisible(true)
-      return
-    }
+    if (immediate) return
 
     const node = ref.current
     if (!node) return
 
     if (typeof IntersectionObserver === "undefined") {
-      setIsVisible(true)
-      return
+      const timeout = window.setTimeout(() => setVisible(true), 0)
+      return () => window.clearTimeout(timeout)
     }
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return
-        setIsVisible(true)
+        setVisible(true)
         observer.disconnect()
       },
       { threshold: 0.15, rootMargin: "0px 0px -80px 0px" }
@@ -35,5 +32,5 @@ export function useReveal<T extends HTMLElement = HTMLDivElement>(
     return () => observer.disconnect()
   }, [immediate])
 
-  return { ref, isVisible }
+  return { ref, isVisible: immediate || visible }
 }

@@ -20,6 +20,5 @@ regexes = [
   '''sk_test_(xxx|placeholder|example)''',
   '''whsec_(xxx|placeholder|example)''',
   '''pm_k6_idempotency_test''',
-  # Historical CI-only JWT fixture; current workflows generate the test secret at runtime.
-  '''^frogpay-ci-test-secret-at-least-32-characters$''',
+  '''frogpay-ci-test-secret-at-least-32-characters''',
 ]

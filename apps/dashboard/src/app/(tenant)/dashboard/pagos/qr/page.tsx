@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, QrCode } from "lucide-react";
 import { ErrorAlert } from "@/components/shared/error-alert";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,27 +50,22 @@ export default function QrPaymentPage() {
   };
 
   return (
-    <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="qr-payment-title">
-      <Link href="/dashboard/pagos">
-        <Button variant="ghost" size="sm" className="-ml-2 gap-2 text-muted-foreground">
-          <ArrowLeft aria-hidden className="size-4" />
-          Volver a métodos de pago
-        </Button>
-      </Link>
-
-      <header className="space-y-2">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            <QrCode aria-hidden className="size-5" />
-          </span>
-          <h1 id="qr-payment-title" className="text-2xl font-bold tracking-tight">Pago con QR</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {payment
+    <section className="mx-auto max-w-5xl space-y-6" aria-labelledby="qr-payment-title">
+      <PageHeader
+        title="Pago con QR"
+        description={
+          payment
             ? "Escanea el código para completar el pago de prueba."
-            : "Ingresa un monto para generar un código QR de prueba."}
-        </p>
-      </header>
+            : "Ingresa un monto para generar un código QR de prueba."
+        }
+        icon={QrCode}
+        actions={
+          <Button nativeButton={false} render={<Link href="/dashboard/pagos" />} variant="outline" className="min-h-10">
+            <ArrowLeft aria-hidden className="size-4" />
+            Volver a métodos de pago
+          </Button>
+        }
+      />
 
       {payment ? (
         <QrPaymentPanel

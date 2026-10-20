@@ -31,9 +31,21 @@ interface BankTransactionResponse {
   currency: string;
   bankName: string;
   receivedAt: string;
-  status: "reconciled" | "amount_mismatch" | "currency_mismatch" | "unmatched";
+  status: "reconciled" | "amount_mismatch" | "currency_mismatch" | "unmatched" | "reference_not_found";
   paymentId: string | null;
   createdAt: string;
+}
+
+export type BankTransactionStatusFilter =
+  | "reconciled"
+  | "amount_mismatch"
+  | "currency_mismatch"
+  | "unmatched";
+
+export interface BankTransactionFilters {
+  status?: BankTransactionStatusFilter;
+  from?: string;
+  to?: string;
 }
 
 interface PaginatedBankTransactionsResponse {
@@ -51,15 +63,22 @@ const statusMap: Record<BankTransactionResponse["status"], ReconciliationStatus>
   amount_mismatch: "AMOUNT_MISMATCH",
   currency_mismatch: "CURRENCY_MISMATCH",
   unmatched: "WITHOUT_REFERENCE",
+  reference_not_found: "WITHOUT_REFERENCE",
 };
 
 export const reconciliationService = {
   getBankTransactions: async (
     page = 1,
     limit = 20,
+    filters: BankTransactionFilters = {},
   ): Promise<{ transactions: BankTransaction[]; pagination: BankTransactionPagination }> => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (filters.status) params.set("status", filters.status);
+    if (filters.from) params.set("from", filters.from);
+    if (filters.to) params.set("to", filters.to);
+
     const response = await apiRequest<PaginatedBankTransactionsResponse>(
-      `/dashboard/bank-transactions?page=${page}&limit=${limit}`,
+      `/dashboard/bank-transactions?${params.toString()}`,
     );
 
     const transactions = response.data.map((transaction) => {
