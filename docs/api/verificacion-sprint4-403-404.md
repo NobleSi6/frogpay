@@ -122,6 +122,7 @@ $env:DATABASE_URL = 'postgresql://frogpay_test:frogpay_local_test_only@localhost
 $env:DIRECT_URL = 'postgresql://frogpay_test:frogpay_local_test_only@localhost:15432/frogpay_test'
 $env:PGPASSWORD = 'frogpay_local_test_only'
 $env:RABBITMQ_URL = 'amqp://frogpay_test:frogpay_test_password@localhost:5672'
+$env:JWT_SECRET = 'frogpay-ci-test-secret-at-least-32-characters'
 ```
 
 Aplica las migraciones y carga los catálogos:
@@ -197,6 +198,17 @@ No imprimas ni compartas el contenido de `.env`.
 `DATABASE_URL` todavía apunta a Supabase. Reasigna la URL local con usuario
 `frogpay_app` y puerto `15432`. No resuelvas este error con
 `ALLOW_SHARED_DB=1`: la prueba publica mensajes y limpia filas de base de datos.
+
+### El outbox indica que falta `JWT_SECRET`
+
+Define el secreto ficticio de pruebas en la misma ventana de PowerShell antes
+de ejecutar Jest:
+
+```powershell
+$env:JWT_SECRET = 'frogpay-ci-test-secret-at-least-32-characters'
+```
+
+No reutilices un secreto de producción o de otro entorno.
 
 ### Error de autenticación para `postgres`
 
