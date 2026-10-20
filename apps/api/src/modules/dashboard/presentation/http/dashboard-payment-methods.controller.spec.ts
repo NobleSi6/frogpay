@@ -71,10 +71,11 @@ describe('DashboardPaymentMethodsController', () => {
     ]);
   });
 
-  it('restricts access to owners and admins', () => {
+  it('permite consultar los métodos a todos los roles del tenant', () => {
     expect(Reflect.getMetadata(ROLES_KEY, DashboardPaymentMethodsController)).toEqual([
       'OWNER',
-      'ADMIN',
+      'OPERATOR',
+      'VIEWER',
     ]);
   });
 });

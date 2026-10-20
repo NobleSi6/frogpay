@@ -22,6 +22,9 @@
 
 **`GET /dashboard/payments`** — `OWNER`.
 
+Implementado en el BFF del API: deriva el tenant del JWT y devuelve pagos
+paginados con los filtros documentados abajo.
+
 Query params combinables:
 
 | Parámetro | Tipo | Regla |
@@ -291,11 +294,11 @@ datos de pago, `tenantId` ni conteos separados por tenant.
 
 ## Errores comunes
 
-`400 validation_error` para filtros inválidos, 
+`400 validation_error` para filtros inválidos,
 `401 unauthorized` para sesión
-ausente/inválida, 
-`403 forbidden` para rol insuficiente, 
+ausente/inválida,
+`403 forbidden` para rol insuficiente,
 `404` para recurso
-inexistente o ajeno, y 
+inexistente o ajeno, y
 `429 rate_limit_exceeded` cuando aplica. Ver
 [errores.md](errores.md).

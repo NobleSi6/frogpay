@@ -17,6 +17,7 @@ describe('ERROR_CATALOG', () => {
         'provider_timeout',
         'provider_unavailable',
         'qr_expired',
+        'rate_limit_exceeded',
         'transfer_expired',
         'amount_mismatch',
         'currency_mismatch',
@@ -28,6 +29,7 @@ describe('ERROR_CATALOG', () => {
 
   it('assigns HTTP statuses only to request errors', () => {
     expect(ERROR_CATALOG.validation_error.httpStatus).toBe(422);
+    expect(ERROR_CATALOG.rate_limit_exceeded.httpStatus).toBe(429);
     expect(ERROR_CATALOG.idempotency_in_progress.httpStatus).toBe(409);
     expect(ERROR_CATALOG.idempotency_key_reused.httpStatus).toBe(422);
     expect(ERROR_CATALOG.deposit_id_reused.httpStatus).toBe(409);

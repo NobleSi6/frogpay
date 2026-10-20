@@ -1,0 +1,5 @@
+services:
+  api:
+    # The API is reachable through NGINX in k6 runs; remove the fixed host port
+    # so Compose can start multiple API replicas.
+    ports: !reset []

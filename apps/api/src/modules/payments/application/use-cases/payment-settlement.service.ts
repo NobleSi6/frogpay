@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { MetricsService } from '../../../observability/metrics.service';
 import type { PaymentProviderErrorCode } from '../../../provider-adapters/ports/payment-provider.port';
 import { PrismaTenantContextService } from '../../../../shared/database/prisma-tenant-context.service';
 import { calculatePaymentAmounts } from './payment-amount-calculator';
@@ -10,7 +11,10 @@ export type PaymentSettlementResult =
 
 @Injectable()
 export class PaymentSettlementService {
-  constructor(private readonly tenantContext: PrismaTenantContextService) {}
+  constructor(
+    private readonly tenantContext: PrismaTenantContextService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {}
 
   approve(paymentId: string): Promise<PaymentSettlementResult> {
     return this.settle(paymentId, 'approved');
@@ -23,12 +27,14 @@ export class PaymentSettlementService {
     return this.settle(paymentId, 'rejected', errorCode);
   }
 
-  private settle(
+  private async settle(
     paymentId: string,
     status: 'approved' | 'rejected',
     errorCode?: PaymentProviderErrorCode,
   ): Promise<PaymentSettlementResult> {
-    return this.tenantContext.withGlobalAccess(async (tx) => {
+    let paymentMethod: string | undefined;
+    const result: PaymentSettlementResult =
+      await this.tenantContext.withGlobalAccess(async (tx) => {
       const payment = await tx.payment.findUnique({
         where: { id: paymentId },
         include: {
@@ -38,6 +44,7 @@ export class PaymentSettlementService {
       });
 
       if (!payment) return { outcome: 'unchanged', paymentId, reason: 'not_found' };
+      paymentMethod = payment.provider.payment_method.code;
       if (payment.status !== 'pending') {
         return { outcome: 'unchanged', paymentId, reason: 'not_pending' };
       }
@@ -141,6 +148,12 @@ export class PaymentSettlementService {
       });
 
       return { outcome: 'changed', paymentId, status };
-    });
+      });
+
+    if (result.outcome === 'changed' && paymentMethod !== undefined) {
+      this.metrics?.recordPayment(result.status, paymentMethod);
+    }
+
+    return result;
   }
 }

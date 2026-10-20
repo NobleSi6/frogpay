@@ -24,14 +24,21 @@ import { LoginUseCase } from './application/use-cases/login.use-case';
 import { GetCurrentUserUseCase } from './application/use-cases/get-current-user.use-case';
 import { ListTenantsUseCase } from './application/use-cases/list-tenants.use-case';
 import { JwtTokenService } from '../../shared/auth/jwt-token.service';
+import { EmailModule } from '../../shared/email/email.module';
+import { TenantUsersController } from './presentation/http/tenant-users.controller';
+import { InviteTenantUserUseCase } from './application/use-cases/invite-tenant-user.use-case';
+import { ListTenantUsersUseCase } from './application/use-cases/list-tenant-users.use-case';
 
 @Module({
-  controllers: [TenantsController, IdentityController, ApiKeysController],
-  imports: [EventBusModule],
+  controllers: [TenantsController, IdentityController, ApiKeysController, TenantUsersController],
+  imports: [EventBusModule, EmailModule],
   providers: [
     TenantEventProbe,
     PrismaTenantRegistrationRepository,
-    { provide: TENANT_REGISTRATION_REPOSITORY, useExisting: PrismaTenantRegistrationRepository },
+    {
+      provide: TENANT_REGISTRATION_REPOSITORY,
+      useExisting: PrismaTenantRegistrationRepository,
+    },
     CreateTenantUseCase,
     ActivateInvitationUseCase,
     GenerateApiKeyUseCase,
@@ -41,6 +48,8 @@ import { JwtTokenService } from '../../shared/auth/jwt-token.service';
     LoginUseCase,
     GetCurrentUserUseCase,
     ListTenantsUseCase,
+    InviteTenantUserUseCase,
+    ListTenantUsersUseCase,
     JwtTokenService,
     {
       provide: TENANT_REPOSITORY,

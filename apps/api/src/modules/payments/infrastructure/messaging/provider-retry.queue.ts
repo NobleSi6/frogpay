@@ -1,6 +1,7 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
+import { MetricsService } from '../../../observability/metrics.service';
 import {
   parseRetryDelays,
   ProviderRetryMessage,
@@ -26,12 +27,17 @@ export class ProviderRetryQueue implements ProviderRetryScheduler, OnModuleDestr
   private channel?: amqp.ConfirmChannel;
   private connecting?: Promise<amqp.ConfirmChannel>;
   private handler?: (message: ProviderRetryMessage) => Promise<void>;
+  private dlqMetricsTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {
     this.delaysMs = parseRetryDelays(config.get<string>('PROVIDER_RETRY_DELAYS_MS'));
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.dlqMetricsTimer) clearInterval(this.dlqMetricsTimer);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
   }
@@ -45,6 +51,7 @@ export class ProviderRetryQueue implements ProviderRetryScheduler, OnModuleDestr
 
   async deadLetter(message: ProviderRetryMessage & { reason: string; failedAt: string }): Promise<void> {
     await this.publish(PAYMENTS_DLQ, message);
+    await this.refreshDlqMetrics();
   }
 
   /** Reabre la conexión si se cayó; el worker lo llama periódicamente. */
@@ -105,6 +112,7 @@ export class ProviderRetryQueue implements ProviderRetryScheduler, OnModuleDestr
     await channel.prefetch(5);
     await channel.assertQueue(PROVIDER_RETRY_QUEUE, { durable: true });
     await channel.assertQueue(PAYMENTS_DLQ, { durable: true });
+    this.startDlqMetricsCollection();
     for (const delay of this.delaysMs) {
       await channel.assertQueue(providerRetryWaitQueue(delay), {
         durable: true,
@@ -125,5 +133,27 @@ export class ProviderRetryQueue implements ProviderRetryScheduler, OnModuleDestr
     this.channel = channel;
     if (this.handler) await this.startConsumer(channel);
     return channel;
+  }
+
+  private startDlqMetricsCollection(): void {
+    if (!this.metrics || this.dlqMetricsTimer) return;
+    void this.refreshDlqMetrics();
+    this.dlqMetricsTimer = setInterval(
+      () => void this.refreshDlqMetrics(),
+      15_000,
+    );
+    this.dlqMetricsTimer.unref?.();
+  }
+
+  private async refreshDlqMetrics(): Promise<void> {
+    if (!this.metrics || !this.channel) return;
+    try {
+      const queue = await this.channel.checkQueue(PAYMENTS_DLQ);
+      this.metrics.setDlqMessages(PAYMENTS_DLQ, queue.messageCount);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo consultar la DLQ ${PAYMENTS_DLQ}: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+    }
   }
 }

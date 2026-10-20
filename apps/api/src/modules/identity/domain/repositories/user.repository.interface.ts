@@ -6,5 +6,7 @@ export interface IUserRepository {
   findById(id: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
   findByInvitationTokenHash(tokenHash: string): Promise<User | null>;
+  findByTenantEmail(tenantId: string, email: string): Promise<User | null>;
+  listByTenant(tenantId: string): Promise<User[]>;
   save(user: User): Promise<void>;
 }
