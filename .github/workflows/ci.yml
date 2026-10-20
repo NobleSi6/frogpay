@@ -43,7 +43,6 @@ jobs:
       DIRECT_URL: postgresql://frogpay_test@localhost:5432/frogpay_test
       PGPASSWORD: ${{ github.run_id }}
       RABBITMQ_URL: amqp://frogpay_test:frogpay_test_password@localhost:5672
-      JWT_SECRET: frogpay-ci-test-secret-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,6 +50,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Generate ephemeral test JWT secret
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Generate Prisma client
         run: npx prisma generate --schema apps/api/prisma/schema.prisma
       - name: Create isolated database roles
