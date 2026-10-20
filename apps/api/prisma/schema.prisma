@@ -244,8 +244,9 @@ model tenant {
   contact_phone              String?
   webhook_url                String?
   metadata                   Json                         @default("{}")
-  status                     String                       @default("invited")
+  status                     String   @default("invited")
   plan_id                    String?                      @db.Uuid
+  plan_expires_at            DateTime?                    @db.Timestamptz(6)
   created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
   api_key                    api_key[]

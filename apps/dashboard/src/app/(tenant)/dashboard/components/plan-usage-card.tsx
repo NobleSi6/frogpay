@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/shared/error-alert";
 import { formatUsagePercent } from "@/lib/api/dashboard-metrics";
 import { planUsagePercent, type TenantPlanStatus } from "@/lib/api/tenant-plan";
+import { formatPlanExpiry } from "@/features/plans/services/plan-service";
 import { RATE_LIMIT_MESSAGE, isRateLimitError } from "@/lib/api/query-error";
 import { formatDecimalAmount } from "../pagos/transacciones/payment-format";
 
@@ -55,6 +56,7 @@ export function PlanUsageCard({ query, onRetry }: PlanUsageCardProps) {
   if (!status) return null;
 
   const percent = planUsagePercent(status);
+  const expiryLabel = formatPlanExpiry(status.planExpiresAt);
 
   return (
     <Card className="shadow-sm">
@@ -97,6 +99,9 @@ export function PlanUsageCard({ query, onRetry }: PlanUsageCardProps) {
               )}
             </p>
           </>
+        )}
+        {percent === null && expiryLabel && (
+          <p className="text-xs text-muted-foreground">Vence el {expiryLabel}</p>
         )}
         <p className="text-xs text-muted-foreground">Período: {status.period}</p>
       </CardContent>

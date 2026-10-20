@@ -4,6 +4,7 @@ export interface TenantPlanData {
   plan: Plan | null;
   volumeUsed: string;
   txCount: number;
+  planExpiresAt: string | null;
 }
 
 export type ChangeTenantPlanResult =
@@ -18,7 +19,9 @@ export interface PlanRepository {
     tenantId: string,
     planId: string,
     period: string,
+    planExpiresAt: Date | null,
   ): Promise<ChangeTenantPlanResult>;
+  downgradeTenantToFree(tenantId: string): Promise<boolean>;
 }
 
 export const PLAN_REPOSITORY = Symbol('PLAN_REPOSITORY');

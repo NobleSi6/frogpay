@@ -19,6 +19,8 @@ export interface TenantPlanStatus {
   txCount: number;
   remaining: string | null;
   limitReached: boolean;
+  /** ISO 8601 con el vencimiento del plan Premium; null en Free o sin vigencia. */
+  planExpiresAt: string | null;
 }
 
 export const TENANT_PLAN_ENDPOINT = "/tenants/me/plan";

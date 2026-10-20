@@ -9,9 +9,6 @@ import { Reveal } from "./Reveal";
 const featureLabels: Record<string, string> = {
   webhooks: "Webhooks",
   dashboard_basic: "Dashboard básico",
-  analytics: "Analíticas avanzadas",
-  fraud_detection: "Detección de fraude",
-  multi_region: "Cobertura multi-región",
 };
 
 function formatBob(value: string): string {

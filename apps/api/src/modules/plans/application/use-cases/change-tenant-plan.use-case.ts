@@ -12,6 +12,11 @@ import type { Clock } from '../ports/clock.port.js';
 import { getCurrentPlanPeriod } from './plan-period.js';
 import { GetCurrentTenantPlanUseCase } from './get-current-tenant-plan.use-case.js';
 
+/** Duración del ciclo Premium simulado: 1 mes desde el cambio. */
+const PREMIUM_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+
+const OWNER_ROLES = new Set(['OWNER', 'tenant_owner']);
+
 @Injectable()
 export class ChangeTenantPlanUseCase {
   constructor(
@@ -25,12 +30,29 @@ export class ChangeTenantPlanUseCase {
     role: string,
     planId: string,
   ): Promise<TenantPlanStatus> {
-    if (role !== 'tenant_owner') {
+    if (!OWNER_ROLES.has(role)) {
       throw new ForbiddenException('Solo el propietario del tenant puede cambiar el plan.');
     }
 
-    const period = getCurrentPlanPeriod(this.clock.now());
-    const result = await this.plans.changeTenantPlan(tenantId, planId, period);
+    const now = this.clock.now();
+    const period = getCurrentPlanPeriod(now);
+    const catalog = await this.plans.findCatalog();
+    const targetPlan = catalog.find((candidate) => candidate.id === planId);
+    if (!targetPlan) {
+      throw new NotFoundException('El plan solicitado no existe.');
+    }
+
+    // Simulación de cobro: Premium otorga 1 mes de vigencia; Free no expira.
+    const planExpiresAt = targetPlan.name.toLowerCase().includes('premium')
+      ? new Date(now.getTime() + PREMIUM_DURATION_MS)
+      : null;
+
+    const result = await this.plans.changeTenantPlan(
+      tenantId,
+      planId,
+      period,
+      planExpiresAt,
+    );
 
     if (result.kind === 'plan-not-found') {
       throw new NotFoundException('El plan solicitado no existe.');
@@ -45,6 +67,7 @@ export class ChangeTenantPlanUseCase {
       period,
       result.data.volumeUsed,
       result.data.txCount,
+      result.data.planExpiresAt,
     );
   }
 }

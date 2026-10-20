@@ -53,7 +53,11 @@ export class PrismaPlanRepository implements PlanRepository {
     return this.tenantContext.withTenant(tenantId, async (tx) => {
       const tenant = await tx.tenant.findUnique({
         where: { id: tenantId },
-        select: { id: true, plan: { select: planSelect } },
+        select: {
+          id: true,
+          plan_expires_at: true,
+          plan: { select: planSelect },
+        },
       });
       if (!tenant) return null;
 
@@ -66,6 +70,7 @@ export class PrismaPlanRepository implements PlanRepository {
         plan: tenant.plan ? mapPlan(tenant.plan) : null,
         volumeUsed: usage?.volume_used.toFixed(2) ?? '0.00',
         txCount: usage?.tx_count ?? 0,
+        planExpiresAt: tenant.plan_expires_at?.toISOString() ?? null,
       };
     });
   }
@@ -74,6 +79,7 @@ export class PrismaPlanRepository implements PlanRepository {
     tenantId: string,
     planId: string,
     period: string,
+    planExpiresAt: Date | null,
   ): Promise<ChangeTenantPlanResult> {
     return this.tenantContext.withTenant(tenantId, async (tx) => {
       const plan = await tx.plan.findUnique({
@@ -84,7 +90,7 @@ export class PrismaPlanRepository implements PlanRepository {
 
       const tenant = await tx.tenant.updateMany({
         where: { id: tenantId },
-        data: { plan_id: planId },
+        data: { plan_id: planId, plan_expires_at: planExpiresAt },
       });
       if (tenant.count === 0) return { kind: 'tenant-not-found' };
 
@@ -99,8 +105,25 @@ export class PrismaPlanRepository implements PlanRepository {
           plan: mapPlan(plan),
           volumeUsed: usage?.volume_used.toFixed(2) ?? '0.00',
           txCount: usage?.tx_count ?? 0,
+          planExpiresAt: planExpiresAt?.toISOString() ?? null,
         },
       };
+    });
+  }
+
+  downgradeTenantToFree(tenantId: string): Promise<boolean> {
+    return this.tenantContext.withTenant(tenantId, async (tx) => {
+      const freePlan = await tx.plan.findUnique({
+        where: { name: 'Free' },
+        select: { id: true },
+      });
+      if (!freePlan) return false;
+
+      const updated = await tx.tenant.updateMany({
+        where: { id: tenantId },
+        data: { plan_id: freePlan.id, plan_expires_at: null },
+      });
+      return updated.count > 0;
     });
   }
 }
