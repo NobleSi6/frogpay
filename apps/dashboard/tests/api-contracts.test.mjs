@@ -8,7 +8,7 @@ function load(file, env, fetch, imports = {}, globals = {}) {
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, require: name => imports[name], process: { env }, fetch, Headers, AbortSignal, ...globals });
+  vm.runInNewContext(code, { exports, require: name => imports[name], process: { env }, fetch, Headers, AbortSignal, URLSearchParams, ...globals });
   return exports;
 }
 const env = { NODE_ENV: "development", NEXT_PUBLIC_API_URL: "http://api.example.test", NEXT_PUBLIC_API_DEV_MODE: "true", NEXT_PUBLIC_DEMO_MODE: "false" };
@@ -49,6 +49,16 @@ test("API keys use real GET, POST, DELETE and atomic regeneration endpoints", as
     ["POST", "http://api.example.test/api/tenants/tenant-id/api-keys/key-id/regenerate"],
   ]);
   assert.deepEqual(JSON.parse(f.calls[1].options.body), { name: "Dashboard Test API Key", type: "test" });
+});
+test("platform status and audit integrity use their Platform Admin GET contracts", async () => {
+  const f = fixture({ status: "ok" });
+  const service = f.service("features/platform-status/services/platform-status-service.ts");
+  await service.getPlatformStatus();
+  await service.verifyAuditIntegrity("tenant id");
+  assert.deepEqual(f.calls.map(call => [call.options.method ?? "GET", call.url]), [
+    ["GET", "http://api.example.test/api/admin/platform-status"],
+    ["GET", "http://api.example.test/api/admin/audit/verify?tenantId=tenant+id"],
+  ]);
 });
 test("validation, duplicate and forbidden errors keep status and useful messages", async () => {
   for (const status of [400, 401, 403, 409]) {
