@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, CreditCard, KeyRound, LogOut, ReceiptText, Webhook, Settings, Scale } from "lucide-react";
+import { Home, CreditCard, KeyRound, LogOut, ReceiptText, ScrollText, Webhook, Settings, Scale } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
@@ -24,6 +24,7 @@ const links: NavItem[] = [
   { href: "/dashboard/pagos", label: "Pagos", Icon: CreditCard, exact: true },
   { href: "/dashboard/pagos/transacciones", label: "Transacciones", Icon: ReceiptText, exact: true, nested: true },
   { href: "/dashboard/pagos/conciliacion", label: "Conciliación", Icon: Scale, exact: false },
+  { href: "/dashboard/auditoria", label: "Auditoría", Icon: ScrollText, exact: false },
   { href: "/dashboard/api-keys", label: "API Keys", Icon: KeyRound, exact: false },
   { href: "/dashboard/webhooks", label: "Webhooks", Icon: Webhook, exact: false },
   { href: "/dashboard/configuracion", label: "Configuración", Icon: Settings, exact: false },

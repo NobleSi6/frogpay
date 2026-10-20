@@ -1,9 +1,10 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import { usePaymentDetail } from '@/features/payments/hooks/usePaymentDetail';
 import { PaymentTimeline } from '@/features/payments/components/PaymentTimeline';
+import { PaymentAuditTimeline } from '@/features/payments/components/PaymentAuditTimeline';
 import { WebhookDeliveriesTable } from '@/features/payments/components/WebhookDeliveriesTable';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { ArrowLeft, Loader2, CreditCard, Landmark, QrCode, CheckCircle2, XCircle
 import { ApiError } from '@/lib/api-client';
 import { ErrorAlert } from '@/components/shared/error-alert';
 import { EnvironmentBadge } from '@/components/shared/environment-indicator';
+import { cn } from 'cn';
 
 const paymentMethodLabels = {
   card: 'Tarjeta',
@@ -18,9 +20,17 @@ const paymentMethodLabels = {
   bank_transfer: 'Transferencia bancaria',
 } as const;
 
+type DetailTab = 'detalle' | 'auditoria';
+
+const TAB_LABELS: Array<{ value: DetailTab; label: string }> = [
+  { value: 'detalle', label: 'Detalle' },
+  { value: 'auditoria', label: 'Auditoría' },
+];
+
 export default function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { data: payment, isLoading, isError, error } = usePaymentDetail(id);
+  const [activeTab, setActiveTab] = useState<DetailTab>('detalle');
 
   if (isLoading) {
     return (
@@ -85,79 +95,119 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
-      {(payment.status === 'REJECTED' || payment.status === 'FAILED') && (
-        <ErrorAlert
-          code={payment.errorCode}
-          title={payment.status === 'FAILED' ? 'El pago no pudo completarse' : 'Pago rechazado'}
-        />
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Resumen del Pago */}
-        <Card className="lg:col-span-2 shadow-sm border-border">
-          <CardHeader className="border-b bg-muted/20">
-            <CardTitle className="text-base font-semibold">Resumen de la transacción</CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 text-sm">
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Monto Solicitado</p>
-              <p className="text-lg font-bold text-foreground mt-1">
-                {payment.amount.toFixed(2)} {payment.currency}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Comisión Aplicada</p>
-              <p className="text-lg font-bold text-foreground mt-1">
-                {payment.fee.toFixed(2)} {payment.currency}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Monto Neto</p>
-              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                {payment.net.toFixed(2)} {payment.currency}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Método de Pago</p>
-              <div className="flex items-center gap-2 mt-1">
-                {payment.paymentMethod === 'qr' ? (
-                  <QrCode aria-hidden className="h-4 w-4 text-muted-foreground" />
-                ) : payment.paymentMethod === 'bank_transfer' ? (
-                  <Landmark aria-hidden className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <CreditCard aria-hidden className="h-4 w-4 text-muted-foreground" />
-                )}
-                <p className="font-semibold text-foreground">{paymentMethodLabels[payment.paymentMethod]}</p>
-              </div>
-            </div>
-
-            <div className="sm:col-span-2 border-t pt-4">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Referencia del Comercio</p>
-              <p className="text-base font-mono font-medium text-foreground mt-1">{payment.merchantReference}</p>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Ambiente</p>
-              <div className="mt-1"><EnvironmentBadge environment={payment.environment} /></div>
-            </div>
-
-            <div>
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Fecha de Creación</p>
-              <p className="text-sm font-semibold text-foreground mt-1">{payment.createdAt}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Línea de Tiempo */}
-        <div className="lg:col-span-1">
-          <PaymentTimeline events={payment.timeline || []} />
-        </div>
+      <div role="tablist" aria-label="Secciones de la transacción" className="flex gap-1 border-b">
+        {TAB_LABELS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            role="tab"
+            id={`payment-tab-${tab.value}`}
+            aria-selected={activeTab === tab.value}
+            aria-controls={`payment-tabpanel-${tab.value}`}
+            onClick={() => setActiveTab(tab.value)}
+            className={cn(
+              '-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring',
+              activeTab === tab.value
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <WebhookDeliveriesTable paymentId={id} environment={payment.environment} />
+      <div
+        role="tabpanel"
+        id="payment-tabpanel-detalle"
+        aria-labelledby="payment-tab-detalle"
+        hidden={activeTab !== 'detalle'}
+        className={activeTab === 'detalle' ? 'space-y-6' : undefined}
+      >
+        {(payment.status === 'REJECTED' || payment.status === 'FAILED') && (
+          <ErrorAlert
+            code={payment.errorCode}
+            title={payment.status === 'FAILED' ? 'El pago no pudo completarse' : 'Pago rechazado'}
+          />
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Resumen del Pago */}
+          <Card className="lg:col-span-2 shadow-sm border-border">
+            <CardHeader className="border-b bg-muted/20">
+              <CardTitle className="text-base font-semibold">Resumen de la transacción</CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Monto Solicitado</p>
+                <p className="text-lg font-bold text-foreground mt-1">
+                  {payment.amount.toFixed(2)} {payment.currency}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Comisión Aplicada</p>
+                <p className="text-lg font-bold text-foreground mt-1">
+                  {payment.fee.toFixed(2)} {payment.currency}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Monto Neto</p>
+                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                  {payment.net.toFixed(2)} {payment.currency}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Método de Pago</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {payment.paymentMethod === 'qr' ? (
+                    <QrCode aria-hidden className="h-4 w-4 text-muted-foreground" />
+                  ) : payment.paymentMethod === 'bank_transfer' ? (
+                    <Landmark aria-hidden className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <CreditCard aria-hidden className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <p className="font-semibold text-foreground">{paymentMethodLabels[payment.paymentMethod]}</p>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 border-t pt-4">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Referencia del Comercio</p>
+                <p className="text-base font-mono font-medium text-foreground mt-1">{payment.merchantReference}</p>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Ambiente</p>
+                <div className="mt-1"><EnvironmentBadge environment={payment.environment} /></div>
+              </div>
+
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Fecha de Creación</p>
+                <p className="text-sm font-semibold text-foreground mt-1">{payment.createdAt}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Línea de Tiempo */}
+          <div className="lg:col-span-1">
+            <PaymentTimeline events={payment.timeline || []} />
+          </div>
+        </div>
+
+        <WebhookDeliveriesTable paymentId={id} environment={payment.environment} />
+      </div>
+
+      <div
+        role="tabpanel"
+        id="payment-tabpanel-auditoria"
+        aria-labelledby="payment-tab-auditoria"
+        hidden={activeTab !== 'auditoria'}
+        className={activeTab === 'auditoria' ? 'space-y-6' : undefined}
+      >
+        <PaymentAuditTimeline paymentId={id} />
+      </div>
     </div>
   );
 }
