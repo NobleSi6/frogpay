@@ -14,9 +14,11 @@ paths = [
   '''(^|/)docs/''',
   '''(^|/)package-lock\.json$''',
   '''(^|/)infra/nginx/certs/''',
+  '''(^|/)scripts/k6-bank-transfer-latency\.js$''',
 ]
 regexes = [
   '''sk_test_(xxx|placeholder|example)''',
   '''whsec_(xxx|placeholder|example)''',
   '''pm_k6_idempotency_test''',
+  '''frogpay-ci-test-secret-at-least-32-characters''',
 ]

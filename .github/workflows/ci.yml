@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      rabbitmq:
+        image: rabbitmq:3-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: frogpay_test
+          RABBITMQ_DEFAULT_PASS: frogpay_test_password
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://frogpay_app@localhost:5432/frogpay_test
+      DIRECT_URL: postgresql://frogpay_test@localhost:5432/frogpay_test
+      PGPASSWORD: ${{ github.run_id }}
+      RABBITMQ_URL: amqp://frogpay_test:frogpay_test_password@localhost:5672
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Generate ephemeral test JWT secret
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Generate Prisma client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - name: Create isolated database roles
+        run: |
+          psql postgresql://postgres@localhost:5432/postgres -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE frogpay_test WITH LOGIN SUPERUSER" \
+            -c "CREATE ROLE frogpay_app WITH LOGIN NOBYPASSRLS" \
+            -c "CREATE ROLE anon NOLOGIN" \
+            -c "CREATE ROLE authenticated NOLOGIN" \
+            -c "CREATE DATABASE frogpay_test OWNER frogpay_test"
+      - name: Apply database migrations
+        run: |
+          DATABASE_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
+            npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
+      - name: Seed database catalogs
+        run: |
+          NODE_ENV=test \
+          DATABASE_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
+          DIRECT_URL=postgresql://frogpay_test@localhost:5432/frogpay_test \
+            npm run db:seed --workspace apps/api
+          test "$(psql postgresql://frogpay_test@localhost:5432/frogpay_test -Atc "SELECT count(*) FROM payment_method WHERE code IN ('qr', 'card', 'bank_transfer')")" = "3"
+          test "$(psql postgresql://frogpay_test@localhost:5432/frogpay_test -Atc "SELECT count(*) FROM provider WHERE code IN ('qr_local', 'stripe', 'bank_transfer_local')")" = "3"
+      - name: Check production dependency vulnerabilities
+        run: npm audit --workspace apps/api --omit=dev --audit-level=moderate
+      - name: Lint API
+        run: npm run lint --workspace apps/api
+      - name: Unit tests
+        run: npm test --workspace apps/api -- --runInBand --testPathIgnorePatterns=adapters/stripe/stripe-payment-provider.sandbox.spec.ts
+      - name: End-to-end tests
+        run: npm run test:e2e --workspace apps/api -- --runInBand
+      - name: Build API
+        run: npm run build --workspace apps/api

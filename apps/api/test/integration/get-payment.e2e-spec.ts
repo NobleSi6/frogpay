@@ -1,4 +1,8 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  UnauthorizedException,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as request from 'supertest';
 import { PaymentsController } from '../../src/modules/payments/presentation/http/payments.controller';
@@ -172,7 +176,10 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
           const authHeader = req.headers['x-api-key'];
 
           if (!authHeader) {
-            return false;
+            throw new UnauthorizedException({
+              code: 'missing_api_key',
+              message: 'El encabezado X-Api-Key es obligatorio.',
+            });
           }
 
           if (authHeader === validApiKeyTenantA) {
@@ -195,7 +202,10 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
             return true;
           }
 
-          return false;
+          throw new UnauthorizedException({
+            code: 'invalid_api_key',
+            message: 'La API key no existe o es inválida.',
+          });
         },
       })
       .compile();
@@ -294,11 +304,11 @@ describe('GET /v1/payments/:id (Integration) - TSK-DEV1-401', () => {
   });
 
   describe('Validación de formato de ID', () => {
-    it('debe responder 400 Bad Request si el ID no es un UUID válido', async () => {
+    it('debe responder 422 Unprocessable Entity si el ID no es un UUID válido', async () => {
       await request(app.getHttpServer())
         .get('/v1/payments/id-no-valido-123')
         .set('X-Api-Key', validApiKeyTenantA)
-        .expect(400);
+        .expect(422);
     });
   });
 

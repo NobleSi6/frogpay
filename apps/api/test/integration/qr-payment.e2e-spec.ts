@@ -67,15 +67,16 @@ function assertLocalDatabaseUrl(raw: string, expectedUser: string): void {
 
   const database = parsed.pathname.replace(/^\/+/, '');
   const username = decodeURIComponent(parsed.username);
+  const expectedPort = process.env.FROGPAY_TEST_DATABASE_PORT ?? '5432';
   if (
     !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) ||
-    parsed.port !== '5432' ||
+    parsed.port !== expectedPort ||
     database !== 'frogpay_test' ||
     username !== expectedUser ||
     /supabase/i.test(raw)
   ) {
     throw new Error(
-      `La integración requiere frogpay_test local en localhost:5432 con el rol ${expectedUser}.`,
+      `La integración requiere frogpay_test local en localhost:${expectedPort} con el rol ${expectedUser}.`,
     );
   }
 }
