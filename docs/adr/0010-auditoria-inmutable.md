@@ -1,6 +1,6 @@
 # ADR-010: Auditoría inmutable con hash encadenado
 
-- **Estado:** Propuesto
+- **Estado:** Aprobado
 - **Fecha:** 2026-10-16
 - **Decisores:** Luciana Yahuita y equipo de desarrollo FrogPay
 - **Relacionados:** ADR-001, ADR-002, ADR-003, TSK-DEV3-401, TSK-DEV3-402

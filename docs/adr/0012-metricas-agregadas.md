@@ -1,6 +1,6 @@
 # ADR-012: Consulta y caché de métricas agregadas
 
-- **Estado:** Propuesto
+- **Estado:** Aprobado
 - **Fecha:** 2026-10-16
 - **Decisores:** Luciana Yahuita y equipo de desarrollo FrogPay
 - **Relacionados:** ADR-001, ADR-002, ADR-003, TSK-DEV3-403

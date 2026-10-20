@@ -1,6 +1,6 @@
 # ADR-011: Observabilidad con OpenTelemetry y Grafana
 
-- **Estado:** Propuesto
+- **Estado:** Aprobado
 - **Fecha:** 2026-10-16
 - **Decisores:** Luciana Yahuita y equipo de desarrollo FrogPay
 - **Relacionados:** ADR-001, ADR-002, ADR-003, ADR-010, TSK-DEV2-401, TSK-DEV2-402
