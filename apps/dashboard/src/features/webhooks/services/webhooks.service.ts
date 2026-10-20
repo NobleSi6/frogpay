@@ -31,6 +31,7 @@ export type UpdateWebhookEndpointInput = Partial<
 export interface WebhookDelivery {
   id: string;
   webhookId: string;
+  webhookUrl: string;
   paymentId: string | null;
   eventId: string | null;
   eventType: string;

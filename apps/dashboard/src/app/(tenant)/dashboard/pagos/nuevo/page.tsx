@@ -1,7 +1,10 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, CreditCard } from 'lucide-react';
+import { PageHeader } from '@/components/shared/page-header';
 import { StripeElementsProvider } from '@/features/payments/components/StripeElementsProvider';
 import { CardPaymentForm } from '@/features/payments/components/CardPaymentForm';
 import { useCreatePayment } from '@/features/payments/hooks/useCreatePayment';
@@ -44,13 +47,18 @@ export default function NuevoPagoPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Nuevo pago de prueba</h1>
-        <p className="text-sm text-muted-foreground">
-          Prueba tu integración en <span className="font-medium text-foreground">{businessName}</span>
-        </p>
-      </div>
+    <section className="mx-auto max-w-5xl space-y-6">
+      <PageHeader
+        title="Nuevo pago de prueba"
+        description={`Prueba tu integración en ${businessName}. Los datos de la tarjeta se envían directamente a Stripe.`}
+        icon={CreditCard}
+        actions={
+          <Button nativeButton={false} render={<Link href="/dashboard/pagos" />} variant="outline" className="min-h-10">
+            <ArrowLeft aria-hidden />
+            Volver a pagos
+          </Button>
+        }
+      />
 
       {retryAttempt ? (
         <Card className="mx-auto max-w-md">
@@ -96,6 +104,6 @@ export default function NuevoPagoPage() {
           />
         </StripeElementsProvider>
       )}
-    </div>
+    </section>
   );
 }

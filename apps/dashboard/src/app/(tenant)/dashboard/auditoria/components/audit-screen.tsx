@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ShieldAlert } from "lucide-react";
+import { ScrollText, ShieldAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   AUDIT_PAGE_SIZE_OPTIONS,
   useAuditLogs,
@@ -78,18 +79,19 @@ export function AuditScreen() {
 
   return (
     <section aria-labelledby="audit-title" className="space-y-6">
-      <header className="space-y-3">
-        <h1 id="audit-title" className="text-2xl font-bold tracking-tight">
-          Auditoría
-        </h1>
-        <p
-          role="note"
-          className="flex items-center gap-2 rounded-lg border border-info/30 bg-info/10 px-4 py-2 text-sm font-medium text-info"
-        >
-          <ShieldAlert aria-hidden className="size-4 shrink-0" />
-          Los registros de auditoría no se pueden editar ni eliminar.
-        </p>
-      </header>
+      <PageHeader
+        title="Auditoría"
+        description="Consulta el historial de acciones de tu cuenta y verifica su integridad."
+        icon={ScrollText}
+      />
+
+      <p
+        role="note"
+        className="flex items-center gap-2 rounded-xl border border-info/25 bg-info/[0.07] px-4 py-2.5 text-sm font-medium text-info"
+      >
+        <ShieldAlert aria-hidden className="size-4 shrink-0" />
+        Los registros de auditoría no se pueden editar ni eliminar.
+      </p>
 
       <AuditFiltersBar
         filters={filters}

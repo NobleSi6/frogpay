@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ReceiptText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 import { usePaymentsList, type PaymentSortBy } from "@/lib/api/payments";
 import {
   filtersToApiParams,
@@ -81,14 +83,11 @@ export function TransactionsScreen() {
 
   return (
     <section className="space-y-6" aria-labelledby="transactions-title">
-      <header className="space-y-2">
-        <h1 id="transactions-title" className="text-2xl font-bold tracking-tight">
-          Transacciones
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Consulta, filtra y ordena los pagos de tu negocio en un solo lugar.
-        </p>
-      </header>
+      <PageHeader
+        title="Transacciones"
+        description="Consulta, filtra y ordena los pagos de tu negocio en un solo lugar."
+        icon={ReceiptText}
+      />
 
       <TransactionsFilters
         filters={filters}

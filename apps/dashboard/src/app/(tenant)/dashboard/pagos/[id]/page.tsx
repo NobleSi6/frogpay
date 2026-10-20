@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2, CreditCard, Landmark, QrCode, CheckCircle2, XCircle
 import { ApiError } from '@/lib/api-client';
 import { ErrorAlert } from '@/components/shared/error-alert';
 import { EnvironmentBadge } from '@/components/shared/environment-indicator';
+import { PageHeader } from '@/components/shared/page-header';
 import { cn } from 'cn';
 
 const paymentMethodLabels = {
@@ -43,7 +44,7 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
 
   if (isError || !payment) {
     return (
-      <div className="p-6 max-w-4xl mx-auto space-y-4">
+      <div className="mx-auto max-w-4xl space-y-4">
         <Link href="/dashboard/pagos">
           <Button variant="ghost" size="sm" className="gap-2">
             <ArrowLeft className="h-4 w-4" /> Volver a pagos
@@ -58,19 +59,15 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* Botón de retorno y encabezado */}
-      <div className="space-y-2">
-        <Link href="/dashboard/pagos">
-          <Button variant="ghost" size="sm" className="gap-2 -ml-2 text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="h-4 w-4" /> Volver a pagos
-          </Button>
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">Transacción #{payment.id}</h1>
+    <section className="mx-auto max-w-6xl space-y-6">
+      <PageHeader
+        title={`Transacción #${payment.id}`}
+        description="Consulta el resumen, la línea de tiempo y los webhooks asociados a este pago."
+        icon={CreditCard}
+        actions={
+          <>
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
                 payment.status === 'APPROVED'
                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                   : payment.status === 'REJECTED' || payment.status === 'FAILED'
@@ -89,11 +86,14 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
                 ? 'Fallido'
                 : 'Pendiente'}
             </span>
-          </div>
-
-          <EnvironmentBadge environment={payment.environment} />
-        </div>
-      </div>
+            <EnvironmentBadge environment={payment.environment} />
+            <Button nativeButton={false} render={<Link href="/dashboard/pagos" />} variant="outline" className="min-h-10">
+              <ArrowLeft aria-hidden />
+              Volver a pagos
+            </Button>
+          </>
+        }
+      />
 
       <div role="tablist" aria-label="Secciones de la transacción" className="flex gap-1 border-b">
         {TAB_LABELS.map((tab) => (
@@ -208,6 +208,6 @@ export default function PaymentDetailPage({ params }: { params: Promise<{ id: st
       >
         <PaymentAuditTimeline paymentId={id} />
       </div>
-    </div>
+    </section>
   );
 }

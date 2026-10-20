@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 import { useTenantPlan } from "@/lib/api/tenant-plan";
 import { PlanUsageCard } from "../components/plan-usage-card";
 import { formatDecimalAmount } from "../pagos/transacciones/payment-format";
@@ -49,14 +51,11 @@ export default function PlanPage() {
 
   return (
     <section className="space-y-6" aria-labelledby="plan-title">
-      <header className="space-y-1">
-        <h1 id="plan-title" className="text-2xl font-bold tracking-tight">
-          Plan
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Elige tu plan, consulta el consumo mensual y las comisiones aplicadas.
-        </p>
-      </header>
+      <PageHeader
+        title="Plan"
+        description="Elige tu plan, consulta el consumo mensual y las comisiones aplicadas."
+        icon={Sparkles}
+      />
 
       {isPremiumActive && data && (
         <Card className="border-primary shadow-sm">

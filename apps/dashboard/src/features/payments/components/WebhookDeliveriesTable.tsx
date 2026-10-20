@@ -73,6 +73,9 @@ export function WebhookDeliveriesTable({
               <div key={delivery.id} className="grid grid-cols-4 items-center gap-2 p-3 text-xs">
                 <div className="min-w-0">
                   <p className="truncate font-mono">{delivery.eventType}</p>
+                  <p className="truncate text-muted-foreground" title={delivery.webhookUrl}>
+                    {delivery.webhookUrl}
+                  </p>
                   {delivery.lastError && <p className="truncate text-destructive">{delivery.lastError}</p>}
                 </div>
                 <div className="flex justify-center">

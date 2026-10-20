@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CheckCircle2, LoaderCircle, ShieldAlert } from "lucide-react";
+import { CheckCircle2, CreditCard, LoaderCircle, ShieldAlert } from "lucide-react";
 import { EnvironmentBadge } from "@/components/shared/environment-indicator";
 import { ErrorAlert } from "@/components/shared/error-alert";
+import { PageHeader } from "@/components/shared/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -97,14 +98,12 @@ export function StripeCredentialsScreen() {
 
   const configured = saved[environment];
   return <section className="space-y-6" aria-labelledby="stripe-title">
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">Configuración / Proveedores</p>
-        <h1 id="stripe-title" className="text-h3 font-semibold">Stripe</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">Configura las credenciales que FrogPay utilizará en cada ambiente.</p>
-      </div>
-      <EnvironmentBadge environment={environment} />
-    </header>
+    <PageHeader
+      title="Stripe"
+      description="Configura las credenciales que FrogPay utilizará en cada ambiente."
+      icon={CreditCard}
+      actions={<EnvironmentBadge environment={environment} />}
+    />
 
     <div className="flex w-fit rounded-lg border bg-card p-1" aria-label="Ambiente de Stripe">
       {(["sandbox", "production"] as const).map((value) => <Button key={value} type="button" variant={environment === value ? "default" : "ghost"} aria-pressed={environment === value} onClick={() => selectEnvironment(value)} className="min-h-10">
