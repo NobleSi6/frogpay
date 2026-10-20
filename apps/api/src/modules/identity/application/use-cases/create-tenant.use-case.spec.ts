@@ -35,6 +35,8 @@ describe('CreateTenantUseCase', () => {
       findById: jest.fn().mockResolvedValue(null),
       findByEmail: jest.fn().mockResolvedValue(null),
       findByInvitationTokenHash: jest.fn().mockResolvedValue(null),
+      findByTenantEmail: jest.fn().mockResolvedValue(null),
+      listByTenant: jest.fn().mockResolvedValue([]),
       save: jest.fn().mockResolvedValue(undefined),
     };
 

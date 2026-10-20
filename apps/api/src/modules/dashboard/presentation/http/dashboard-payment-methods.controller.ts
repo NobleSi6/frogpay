@@ -9,14 +9,15 @@ import { DashboardPaymentMethodDto } from './dashboard-payment-method.dto';
 @ApiBearerAuth()
 @Controller('dashboard/payment-methods')
 @UseGuards(RolesGuard)
-@Roles('OWNER', 'ADMIN')
+@Roles('OWNER', 'OPERATOR', 'VIEWER')
 export class DashboardPaymentMethodsController {
   constructor(private readonly paymentProviders: PaymentProviderRegistry) {}
 
   @Get()
   @ApiOperation({
     summary: 'Listar métodos de pago habilitados para el Dashboard',
-    description: 'Devuelve los métodos resueltos por configuración, sin exponer identificadores internos de adapters.',
+    description:
+      'Devuelve los métodos resueltos por configuración, sin exponer identificadores internos de adapters.',
   })
   @ApiResponse({
     status: 200,
@@ -25,13 +26,13 @@ export class DashboardPaymentMethodsController {
     isArray: true,
   })
   getPaymentMethods(): DashboardPaymentMethodDto[] {
-    return this.paymentProviders.listMethods().map(
-      ({ code, label, processingMode, requiresPaymentToken }) => ({
+    return this.paymentProviders
+      .listMethods()
+      .map(({ code, label, processingMode, requiresPaymentToken }) => ({
         code,
         label,
         processingMode,
         requiresPaymentToken,
-      }),
-    );
+      }));
   }
 }
