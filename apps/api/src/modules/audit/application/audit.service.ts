@@ -44,7 +44,9 @@ export class AuditService {
     });
     if (duplicate) return { id: duplicate.id, duplicate: true };
 
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.tenantId}, 0))`;
+    // pg_advisory_xact_lock retorna void; $queryRaw no puede deserializar
+    // columnas void, por eso se ejecuta con $executeRaw.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.tenantId}, 0))`;
 
     const duplicateAfterLock = await tx.audit_log.findUnique({
       where: { event_id: input.eventId },
