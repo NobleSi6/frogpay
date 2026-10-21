@@ -14,6 +14,24 @@ import 'reflect-metadata';
 
 class EnvironmentVariables {
   @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'AUDIT_RETENTION_YEARS debe ser un entero.' })
+  @Min(1, { message: 'AUDIT_RETENTION_YEARS debe ser mayor que cero.' })
+  AUDIT_RETENTION_YEARS = 5;
+
+  @IsOptional()
+  @IsIn(['true', 'false'], {
+    message: 'AUDIT_VERIFICATION_JOB_ENABLED debe ser true o false.',
+  })
+  AUDIT_VERIFICATION_JOB_ENABLED: 'true' | 'false' = 'false';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'AUDIT_VERIFICATION_INTERVAL_SECONDS debe ser un entero.' })
+  @Min(60, { message: 'AUDIT_VERIFICATION_INTERVAL_SECONDS debe ser al menos 60.' })
+  AUDIT_VERIFICATION_INTERVAL_SECONDS = 86400;
+
+  @IsOptional()
   @IsIn(['development', 'test', 'production'], {
     message: 'NODE_ENV debe ser development, test o production.',
   })
@@ -72,6 +90,22 @@ class EnvironmentVariables {
     message: 'MAIL_PROVIDER debe ser mailpit o resend.',
   })
   MAIL_PROVIDER?: 'mailpit' | 'resend';
+
+  @IsOptional()
+  @IsString({ message: 'CORS_ORIGIN debe ser una cadena.' })
+  CORS_ORIGIN = 'http://localhost:3000';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'RATE_LIMIT_FREE_PER_MINUTE debe ser un entero.' })
+  @Min(1, { message: 'RATE_LIMIT_FREE_PER_MINUTE debe ser mayor que cero.' })
+  RATE_LIMIT_FREE_PER_MINUTE = 60;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'RATE_LIMIT_PREMIUM_PER_MINUTE debe ser un entero.' })
+  @Min(1, { message: 'RATE_LIMIT_PREMIUM_PER_MINUTE debe ser mayor que cero.' })
+  RATE_LIMIT_PREMIUM_PER_MINUTE = 600;
 
   @IsOptional()
   @Type(() => Number)

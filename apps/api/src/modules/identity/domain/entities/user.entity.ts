@@ -4,6 +4,8 @@ import { Email } from '../value-objects/email.vo';
 export type UserRole =
   | 'PLATFORM_ADMIN'
   | 'OWNER'
+  | 'OPERATOR'
+  | 'VIEWER'
   | 'ADMIN'
   | 'DEVELOPER'
   | 'FINANCE'
@@ -119,6 +121,21 @@ export class User extends Entity<UserProps> {
       },
       id,
     );
+  }
+
+  public static createInvitedTenantUser(
+    tenantId: string,
+    email: string,
+    role: 'OWNER' | 'OPERATOR' | 'VIEWER',
+    name?: string,
+  ): User {
+    return new User({
+      tenantId,
+      email: Email.create(email),
+      name,
+      role,
+      status: 'invited',
+    });
   }
 
   public static reconstitute(

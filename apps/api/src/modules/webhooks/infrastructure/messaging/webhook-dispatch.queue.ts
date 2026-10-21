@@ -1,6 +1,12 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { context, propagation, ROOT_CONTEXT } from '@opentelemetry/api';
 import * as amqp from 'amqplib';
+import { MetricsService } from '../../../observability/metrics.service';
+import {
+  currentRequestId,
+  runWithOptionalRequestId,
+} from '../../../../shared/observability/request-context';
 import { WEBHOOK_RETRY_DELAYS_MS } from '../../domain/retry-policy';
 
 /**
@@ -15,7 +21,8 @@ import { WEBHOOK_RETRY_DELAYS_MS } from '../../domain/retry-policy';
  */
 export const WEBHOOK_DISPATCH_QUEUE = 'frogpay.webhooks.dispatch';
 export const WEBHOOK_DLQ = 'frogpay.webhooks.dlq';
-export const retryQueueName = (delayMs: number): string => `frogpay.webhooks.retry.${delayMs}`;
+export const retryQueueName = (delayMs: number): string =>
+  `frogpay.webhooks.retry.${delayMs}`;
 
 export interface WebhookDispatchMessage {
   deliveryId: string;
@@ -43,23 +50,36 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
   private channel?: amqp.ConfirmChannel;
   private connecting?: Promise<amqp.ConfirmChannel>;
   private handler?: (message: WebhookDispatchMessage) => Promise<void>;
+  private dlqMetricsTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly metrics?: MetricsService,
+  ) {}
 
   async onModuleDestroy(): Promise<void> {
+    if (this.dlqMetricsTimer) clearInterval(this.dlqMetricsTimer);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
   }
 
   async enqueue(message: WebhookDispatchMessage, delayMs = 0): Promise<void> {
     if (delayMs > 0 && !WEBHOOK_RETRY_DELAYS_MS.includes(delayMs)) {
-      throw new Error(`Retraso ${delayMs} ms no está definido en la política de reintentos`);
+      throw new Error(
+        `Retraso ${delayMs} ms no está definido en la política de reintentos`,
+      );
     }
     const channel = await this.getChannel();
-    const queue = delayMs > 0 ? retryQueueName(delayMs) : WEBHOOK_DISPATCH_QUEUE;
+    const queue =
+      delayMs > 0 ? retryQueueName(delayMs) : WEBHOOK_DISPATCH_QUEUE;
+    const traceHeaders: Record<string, string> = {};
+    propagation.inject(context.active(), traceHeaders);
+    const requestId = currentRequestId();
+    if (requestId) traceHeaders['x-request-id'] = requestId;
     channel.sendToQueue(queue, Buffer.from(JSON.stringify(message)), {
       persistent: true,
       contentType: 'application/json',
+      headers: traceHeaders,
     });
     await channel.waitForConfirms();
   }
@@ -71,10 +91,13 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
       contentType: 'application/json',
     });
     await channel.waitForConfirms();
+    await this.refreshDlqMetrics();
   }
 
   /** Registra el worker; si la conexión se cae, se vuelve a suscribir al reconectar. */
-  async consume(handler: (message: WebhookDispatchMessage) => Promise<void>): Promise<void> {
+  async consume(
+    handler: (message: WebhookDispatchMessage) => Promise<void>,
+  ): Promise<void> {
     this.handler = handler;
     if (this.channel) {
       await this.startConsumer(this.channel);
@@ -95,12 +118,28 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
     await channel.consume(WEBHOOK_DISPATCH_QUEUE, async (raw) => {
       if (!raw) return;
       try {
-        await handler(JSON.parse(raw.content.toString()) as WebhookDispatchMessage);
+        const carrier: Record<string, string> = {};
+        for (const [key, value] of Object.entries(
+          raw.properties.headers ?? {},
+        )) {
+          if (typeof value === 'string') carrier[key] = value;
+          else if (Buffer.isBuffer(value)) carrier[key] = value.toString();
+        }
+        const parentContext = propagation.extract(ROOT_CONTEXT, carrier);
+        await runWithOptionalRequestId(carrier['x-request-id'], () =>
+          context.with(parentContext, () =>
+            handler(
+              JSON.parse(raw.content.toString()) as WebhookDispatchMessage,
+            ),
+          ),
+        );
         channel.ack(raw);
       } catch (error) {
         // El worker registra los fallos HTTP en BD; esto solo cubre errores inesperados
         // (BD caída, etc.). Se reencola una vez y, si vuelve a fallar, lo recupera el barrido.
-        this.logger.error(`Error procesando entrega de webhook: ${error instanceof Error ? error.message : error}`);
+        this.logger.error(
+          `Error procesando entrega de webhook: ${error instanceof Error ? error.message : error}`,
+        );
         channel.nack(raw, false, !raw.fields.redelivered);
       }
     });
@@ -127,6 +166,7 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
 
     await channel.assertQueue(WEBHOOK_DISPATCH_QUEUE, { durable: true });
     await channel.assertQueue(WEBHOOK_DLQ, { durable: true });
+    this.startDlqMetricsCollection();
     for (const delay of WEBHOOK_RETRY_DELAYS_MS) {
       await channel.assertQueue(retryQueueName(delay), {
         durable: true,
@@ -139,13 +179,39 @@ export class WebhookDispatchQueue implements OnModuleDestroy {
     connection.on('close', () => {
       this.channel = undefined;
       this.connection = undefined;
-      this.logger.warn('Conexión de webhooks con RabbitMQ cerrada; se reconectará en el próximo uso.');
+      this.logger.warn(
+        'Conexión de webhooks con RabbitMQ cerrada; se reconectará en el próximo uso.',
+      );
     });
-    connection.on('error', (error: Error) => this.logger.error(`RabbitMQ (webhooks): ${error.message}`));
+    connection.on('error', (error: Error) =>
+      this.logger.error(`RabbitMQ (webhooks): ${error.message}`),
+    );
 
     this.connection = connection;
     this.channel = channel;
     if (this.handler) await this.startConsumer(channel);
     return channel;
+  }
+
+  private startDlqMetricsCollection(): void {
+    if (!this.metrics || this.dlqMetricsTimer) return;
+    void this.refreshDlqMetrics();
+    this.dlqMetricsTimer = setInterval(
+      () => void this.refreshDlqMetrics(),
+      15_000,
+    );
+    this.dlqMetricsTimer.unref?.();
+  }
+
+  private async refreshDlqMetrics(): Promise<void> {
+    if (!this.metrics || !this.channel) return;
+    try {
+      const queue = await this.channel.checkQueue(WEBHOOK_DLQ);
+      this.metrics.setDlqMessages(WEBHOOK_DLQ, queue.messageCount);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo consultar la DLQ ${WEBHOOK_DLQ}: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+    }
   }
 }

@@ -2,8 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, Play } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Reveal } from "./Reveal"
 

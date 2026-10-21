@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ArrowLeft, Landmark, Loader2 } from "lucide-react";
 import { ErrorAlert } from "@/components/shared/error-alert";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,29 +42,22 @@ export default function TransferenciaPaymentPage() {
   };
 
   return (
-    <section className="mx-auto max-w-4xl space-y-6" aria-labelledby="bank-transfer-title">
-      <Link href="/dashboard/pagos">
-        <Button variant="ghost" size="sm" className="-ml-2 gap-2 text-muted-foreground">
-          <ArrowLeft aria-hidden className="size-4" />
-          Volver a métodos de pago
-        </Button>
-      </Link>
-
-      <header className="space-y-2">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-            <Landmark aria-hidden className="size-5" />
-          </span>
-          <h1 id="bank-transfer-title" className="text-2xl font-bold tracking-tight">
-            Pago por transferencia bancaria
-          </h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {payment
+    <section className="mx-auto max-w-5xl space-y-6" aria-labelledby="bank-transfer-title">
+      <PageHeader
+        title="Pago por transferencia bancaria"
+        description={
+          payment
             ? "Usa estos datos de prueba para simular el depósito."
-            : "Ingresa un monto para generar las instrucciones de transferencia."}
-        </p>
-      </header>
+            : "Ingresa un monto para generar las instrucciones de transferencia."
+        }
+        icon={Landmark}
+        actions={
+          <Button nativeButton={false} render={<Link href="/dashboard/pagos" />} variant="outline" className="min-h-10">
+            <ArrowLeft aria-hidden className="size-4" />
+            Volver a métodos de pago
+          </Button>
+        }
+      />
 
       {payment ? (
         <BankTransferPanel

@@ -52,9 +52,37 @@ test("provider API client uses the verified GET and PUT contract", async () => {
   assert.equal(source.includes("console."), false);
 });
 
-test("central error map covers every Sprint 2 code with message and action", () => {
+test("central error map covers every backend catalog and auth code with message and action", () => {
   const { exports: errors } = load("config/frogpay-errors.ts");
-  assert.equal(errors.FROGPAY_ERROR_CODES.length, 11);
+  const backendCodes = [
+    "validation_error",
+    "idempotency_in_progress",
+    "idempotency_key_reused",
+    "deposit_id_reused",
+    "plan_limit_exceeded",
+    "rate_limit_exceeded",
+    "card_declined",
+    "insufficient_funds",
+    "expired_card",
+    "incorrect_cvc",
+    "processing_error",
+    "provider_timeout",
+    "provider_unavailable",
+    "qr_expired",
+    "transfer_expired",
+    "amount_mismatch",
+    "currency_mismatch",
+    "reference_not_found",
+    "invalid_state_transition",
+    "unauthorized",
+    "forbidden",
+    "not_found",
+    "internal_error",
+    "payment_not_found",
+    "simulation_not_allowed",
+    "forbidden_in_production",
+  ];
+  assert.deepEqual([...errors.FROGPAY_ERROR_CODES], backendCodes);
   for (const code of errors.FROGPAY_ERROR_CODES) {
     assert.ok(errors.FROGPAY_ERRORS[code].message);
     assert.ok(errors.FROGPAY_ERRORS[code].action);

@@ -117,7 +117,7 @@ export function CardPaymentForm({
 
         <div className="grid grid-cols-3 gap-3">
           <div className="col-span-2">
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
+            <label htmlFor="payment-amount" className="block text-xs font-medium text-muted-foreground mb-1">
               Monto
             </label>
             <input
@@ -150,10 +150,12 @@ export function CardPaymentForm({
         {/* Formulario de Tarjeta con Stripe Elements */}
         <form id="payment-form" onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+            <label id="payment-card-label" className="block text-xs font-medium text-muted-foreground mb-1.5">
               Tarjeta
             </label>
             <div
+              role="group"
+              aria-labelledby="payment-card-label"
               className={`relative rounded-lg border p-3 transition-all duration-200 ${
                 errorMessage
                   ? 'border-destructive bg-destructive/5 ring-1 ring-destructive'

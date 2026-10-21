@@ -7,6 +7,7 @@ const DELIVERY = '55555555-5555-4555-8555-555555555555';
 const row = (overrides: Record<string, unknown> = {}) => ({
   id: DELIVERY,
   webhook_id: 'w-1',
+  webhook: { url: 'https://mi-tienda.test/hook' },
   payment_id: 'p-1',
   event_id: 'e-1',
   event_type: 'pago.aprobado',
@@ -50,7 +51,12 @@ describe('WebhookDeliveriesService', () => {
       expect.objectContaining({ status: 'failed', paymentId: 'p-1', page: 2, pageSize: 10 }),
     );
     expect(result).toMatchObject({ page: 2, pageSize: 10, total: 1 });
-    expect(result.data[0]).toMatchObject({ id: DELIVERY, status: 'failed', attemptCount: 6 });
+    expect(result.data[0]).toMatchObject({
+      id: DELIVERY,
+      status: 'failed',
+      attemptCount: 6,
+      webhookUrl: 'https://mi-tienda.test/hook',
+    });
   });
 
   it('el detalle incluye el payload enviado y cada intento', async () => {

@@ -9,6 +9,8 @@ export interface AppConfig {
   qrExpirationJobIntervalSeconds: number;
   port: number;
   corsOrigin: string;
+  rateLimitFreePerMinute: number;
+  rateLimitPremiumPerMinute: number;
   frontendUrl: string;
   databaseUrl: string;
   directUrl?: string;
@@ -25,6 +27,11 @@ export interface AppConfig {
     port: number;
     password?: string;
     db?: number;
+  };
+  audit: {
+    retentionYears: number;
+    verificationJobEnabled: boolean;
+    verificationIntervalSeconds: number;
   };
 }
 
@@ -51,6 +58,8 @@ export default (): AppConfig => ({
   ),
   port: parseInt(process.env.PORT || '4000', 10),
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  rateLimitFreePerMinute: parseInt(process.env.RATE_LIMIT_FREE_PER_MINUTE || '60', 10),
+  rateLimitPremiumPerMinute: parseInt(process.env.RATE_LIMIT_PREMIUM_PER_MINUTE || '600', 10),
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   databaseUrl: process.env.DATABASE_URL || '',
   directUrl: process.env.DIRECT_URL,
@@ -67,6 +76,19 @@ export default (): AppConfig => ({
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD,
     db: parseInt(process.env.REDIS_DB || '0', 10),
+  },
+  audit: {
+    retentionYears: resolvePositiveInteger(
+      process.env.AUDIT_RETENTION_YEARS,
+      5,
+      'AUDIT_RETENTION_YEARS',
+    ),
+    verificationJobEnabled: process.env.AUDIT_VERIFICATION_JOB_ENABLED === 'true',
+    verificationIntervalSeconds: resolvePositiveInteger(
+      process.env.AUDIT_VERIFICATION_INTERVAL_SECONDS,
+      86400,
+      'AUDIT_VERIFICATION_INTERVAL_SECONDS',
+    ),
   },
 });
 

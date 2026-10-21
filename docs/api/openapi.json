@@ -1,0 +1,869 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "FrogPay API - Payment Gateway",
+    "description": "Contrato de las rutas públicas de pagos y del BFF del Dashboard que están implementadas en FrogPay.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000/api",
+      "description": "API local; el prefijo global /api está incluido."
+    }
+  ],
+  "tags": [
+    { "name": "Pagos públicos" },
+    { "name": "Simuladores sandbox" },
+    { "name": "Dashboard - Pagos" },
+    { "name": "Dashboard - Webhooks" },
+    { "name": "Dashboard - Otros" }
+  ],
+  "paths": {
+    "/v1/payments": {
+      "post": {
+        "tags": ["Pagos públicos"],
+        "summary": "Crear pago",
+        "description": "Autenticación por X-Api-Key. Requiere una Idempotency-Key UUID. Nueva solicitud: 201; reintento con misma clave y cuerpo: 200.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "example": "550e8400-e29b-41d4-a716-446655440001"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreatePayment" },
+              "examples": {
+                "card": {
+                  "value": {
+                    "amount": "150.00",
+                    "currency": "BOB",
+                    "paymentMethod": "card",
+                    "merchantReference": "ORDEN-1001",
+                    "paymentToken": "pm_stripe_test_token"
+                  }
+                },
+                "qr": {
+                  "value": {
+                    "amount": "150.00",
+                    "currency": "BOB",
+                    "paymentMethod": "qr",
+                    "merchantReference": "ORDEN-1002"
+                  }
+                },
+                "bank_transfer": {
+                  "value": {
+                    "amount": "150.00",
+                    "currency": "BOB",
+                    "paymentMethod": "bank_transfer",
+                    "merchantReference": "ORDEN-1003"
+                  }
+                }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pago nuevo creado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Payment" },
+                "example": {
+                  "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+                  "status": "pending",
+                  "amount": "150.00",
+                  "currency": "BOB",
+                  "paymentMethod": "bank_transfer",
+                  "environment": "sandbox",
+                  "merchantReference": "ORDEN-1003",
+                  "commissionAmount": null,
+                  "netAmount": null,
+                  "providerTransactionId": "BT-2026-A81F92",
+                  "errorCode": null,
+                  "bankInstructions": {
+                    "bankName": "Banco FrogPay Simulado",
+                    "accountNumber": "10000012345",
+                    "accountHolder": "FrogPay Bolivia",
+                    "amount": "150.00",
+                    "currency": "BOB",
+                    "reference": "BT-2026-A81F92"
+                  },
+                  "createdAt": "2026-10-18T12:00:00.000Z",
+                  "updatedAt": "2026-10-18T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Reintento idempotente; devuelve el pago previamente creado.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Payment" },
+                "example": {
+                  "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+                  "status": "approved",
+                  "amount": "150.00",
+                  "currency": "BOB",
+                  "paymentMethod": "card",
+                  "environment": "sandbox",
+                  "merchantReference": "ORDEN-1001",
+                  "commissionAmount": "5.25",
+                  "netAmount": "144.75",
+                  "providerTransactionId": "pi_test123",
+                  "errorCode": null,
+                  "createdAt": "2026-10-18T12:00:00.000Z",
+                  "updatedAt": "2026-10-18T12:00:01.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": {
+                  "code": "validation_error",
+                  "message": "El encabezado Idempotency-Key es obligatorio y debe ser un UUID válido.",
+                  "details": { "header": "Idempotency-Key" },
+                  "requestId": "req_8a1c"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API Key ausente o inválida.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": {
+                  "code": "invalid_api_key",
+                  "message": "La API key no es válida.",
+                  "details": null,
+                  "requestId": "req_8a1d"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La clave de idempotencia original sigue en proceso.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": {
+                  "code": "idempotency_in_progress",
+                  "message": "La solicitud original sigue en proceso.",
+                  "details": null,
+                  "requestId": "req_8a1e"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Cuerpo inválido o clave de idempotencia reutilizada con otro cuerpo.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "example": {
+                  "code": "idempotency_key_reused",
+                  "message": "La clave de idempotencia ya fue usada con otro cuerpo.",
+                  "details": null,
+                  "requestId": "req_8a1f"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Límite de frecuencia o volumen excedido.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "examples": {
+                  "rate_limit_exceeded": {
+                    "value": {
+                      "code": "rate_limit_exceeded",
+                      "message": "Se superó el límite de solicitudes.",
+                      "details": { "limit": 60, "windowSeconds": 60, "retryAfterSeconds": 30 },
+                      "requestId": "req_8a20"
+                    }
+                  },
+                  "plan_limit_exceeded": {
+                    "value": {
+                      "code": "plan_limit_exceeded",
+                      "message": "El tenant superó el límite de volumen de su plan.",
+                      "details": { "limit": "5000.00", "used": "5120.00" },
+                      "requestId": "req_8a21"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/{id}": {
+      "get": {
+        "tags": ["Pagos públicos"],
+        "summary": "Consultar pago",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" },
+            "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalle del pago e historial de estados.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentDetails" },
+                "example": {
+                  "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+                  "status": "pending",
+                  "amount": "150.00",
+                  "currency": "BOB",
+                  "paymentMethod": "bank_transfer",
+                  "environment": "sandbox",
+                  "merchantReference": "ORDEN-1003",
+                  "commissionAmount": null,
+                  "netAmount": null,
+                  "providerTransactionId": "BT-2026-A81F92",
+                  "errorCode": null,
+                  "bankInstructions": {
+                    "bankName": "Banco FrogPay Simulado",
+                    "accountNumber": "10000012345",
+                    "accountHolder": "FrogPay Bolivia",
+                    "amount": "150.00",
+                    "currency": "BOB",
+                    "reference": "BT-2026-A81F92"
+                  },
+                  "qrPayload": null,
+                  "expiresAt": "2026-10-19T12:00:00.000Z",
+                  "createdAt": "2026-10-18T12:00:00.000Z",
+                  "updatedAt": "2026-10-18T12:00:00.000Z",
+                  "transitions": [{ "from": null, "to": "pending", "createdAt": "2026-10-18T12:00:00.000Z", "actor": "system" }],
+                  "statusHistory": []
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El ID no es UUID.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "validation_error", "message": "El ID del pago debe ser un UUID válido.", "details": null, "requestId": "req_8a22" } } }
+          },
+          "401": {
+            "description": "API Key ausente o inválida.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "invalid_api_key", "message": "La API key no es válida.", "details": null, "requestId": "req_8a23" } } }
+          },
+          "404": {
+            "description": "Pago inexistente o perteneciente a otro tenant.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "payment_not_found", "message": "El pago solicitado no fue encontrado.", "details": null, "requestId": "req_8a24" } } }
+          }
+        }
+      }
+    },
+    "/v1/test/simulators/bank-deposit": {
+      "post": {
+        "tags": ["Simuladores sandbox"],
+        "summary": "Simular depósito bancario",
+        "description": "Sandbox solamente; concilia una transferencia por referencia y monto.",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BankDeposit" },
+              "example": { "depositId": "DEP-2026-991823", "reference": "BT-2026-A81F92", "amount": "150.00", "currency": "BOB", "bankName": "Banco de Prueba" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resultado de conciliación.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DepositResult" }, "example": { "status": "reconciled", "depositId": "DEP-2026-991823", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "errorCode": null } } }
+          },
+          "403": {
+            "description": "Simulador no disponible para producción.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden_in_production", "message": "Los simuladores solo están disponibles en ambiente sandbox.", "details": null, "requestId": "req_8a25" } } }
+          }
+        }
+      }
+    },
+    "/v1/test/simulators/provider-fault": {
+      "post": {
+        "tags": ["Simuladores sandbox"],
+        "summary": "Inyectar falla de proveedor",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProviderFault" }, "example": { "provider": "stripe", "mode": "error", "durationSeconds": 120 } } }
+        },
+        "responses": {
+          "201": { "description": "Falla activa.", "content": { "application/json": { "example": { "provider": "stripe", "mode": "error", "latencyMs": 0, "until": "2026-10-18T12:02:00.000Z" } } } },
+          "403": { "description": "Disponible solo en sandbox.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "simulation_not_allowed", "message": "La simulación de fallas solo está disponible en sandbox.", "details": null, "requestId": "req_8a26" } } } }
+        }
+      },
+      "get": {
+        "tags": ["Simuladores sandbox"],
+        "summary": "Listar fallas de proveedor activas",
+        "security": [{ "ApiKeyAuth": [] }],
+        "responses": {
+          "200": { "description": "Fallas activas.", "content": { "application/json": { "example": [{ "provider": "stripe", "mode": "latency", "latencyMs": 5000, "until": "2026-10-18T12:02:00.000Z" }] } } },
+          "403": { "description": "Disponible solo en sandbox.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "simulation_not_allowed", "message": "La simulación de fallas solo está disponible en sandbox.", "details": null, "requestId": "req_8a27" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Simuladores sandbox"],
+        "summary": "Limpiar fallas simuladas",
+        "security": [{ "ApiKeyAuth": [] }],
+        "parameters": [{ "name": "provider", "in": "query", "required": false, "schema": { "type": "string" }, "example": "stripe" }],
+        "responses": {
+          "204": { "description": "Falla(s) eliminada(s)." },
+          "403": { "description": "Disponible solo en sandbox.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "simulation_not_allowed", "message": "La simulación de fallas solo está disponible en sandbox.", "details": null, "requestId": "req_8a28" } } } }
+        }
+      }
+    },
+    "/v1/test/simulators/qr-callback": {
+      "post": {
+        "tags": ["Simuladores sandbox"],
+        "summary": "Simular callback de proveedor QR",
+        "security": [{ "ApiKeyAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "example": { "payment_id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "result": "approved" } } }
+        },
+        "responses": {
+          "200": { "description": "Pago QR actualizado.", "content": { "application/json": { "example": { "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "status": "approved" } } } },
+          "403": { "description": "Simulación no permitida fuera de sandbox.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "simulation_not_allowed", "message": "Simulación no permitida.", "details": null, "requestId": "req_8a29" } } } }
+        }
+      }
+    },
+    "/dashboard/audit-logs": {
+      "get": {
+        "tags": ["Dashboard - Auditoría"],
+        "summary": "Consultar el log de auditoría del tenant actual",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "default": 1 }, "example": 1 },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 25 }, "example": 25 },
+          { "name": "paymentId", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" }, "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391" },
+          { "name": "action", "in": "query", "required": false, "schema": { "type": "string" }, "example": "pago.aprobado" },
+          { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "example": "2026-10-18T00:00:00.000Z" },
+          { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "example": "2026-10-20T00:00:00.000Z" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados paginados, ordenados por fecha descendente. Requiere rol OWNER.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AuditLogPage" },
+                "example": {
+                  "data": [{
+                    "eventId": "9e84723b-ec5f-4bb8-a665-000000000001",
+                    "entity": "payment",
+                    "entityId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391",
+                    "action": "pago.aprobado",
+                    "previousState": { "status": "pending" },
+                    "newState": { "status": "approved" },
+                    "actor": { "type": "system" },
+                    "requestId": "req_audit_123",
+                    "environment": "sandbox",
+                    "createdAt": "2026-10-19T12:00:00.000Z"
+                  }],
+                  "page": 1,
+                  "limit": 25,
+                  "total": 1,
+                  "totalPages": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a42" } } }
+          },
+          "403": {
+            "description": "El endpoint requiere rol OWNER.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Acceso denegado: se requiere el rol OWNER.", "details": null, "requestId": "req_8a43" } } }
+          }
+        }
+      }
+    },
+    "/dashboard/metrics": {
+      "get": {
+        "tags": ["Dashboard - Métricas"],
+        "summary": "Obtener métricas agregadas del tenant",
+        "description": "Acepta días 7 o 30 y ambiente sandbox o production. El resultado se cachea durante 300 segundos. Los roles configurados en el controlador son OWNER, OPERATOR y VIEWER.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "days", "in": "query", "required": true, "schema": { "type": "integer", "enum": [7, 30] }, "example": 7 },
+          { "name": "environment", "in": "query", "required": true, "schema": { "type": "string", "enum": ["sandbox", "production"] }, "example": "sandbox" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agregados del tenant autenticado. dailySeries contiene exactamente un elemento por día.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DashboardMetrics" },
+                "example": {
+                  "from": "2026-10-13",
+                  "to": "2026-10-19",
+                  "environment": "sandbox",
+                  "currency": "BOB",
+                  "volume": "150.00",
+                  "transactionCount": 2,
+                  "approvalRate": 0.5,
+                  "commissionAmount": "5.25",
+                  "netAmount": "144.75",
+                  "byMethod": [{ "paymentMethod": "card", "transactionCount": 2, "approvedCount": 1, "volume": "150.00" }],
+                  "dailySeries": [
+                    { "date": "2026-10-13", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-14", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-15", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-16", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-17", "transactionCount": 0, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 0 },
+                    { "date": "2026-10-18", "transactionCount": 1, "volume": "0.00", "approvedCount": 0, "rejectedCount": 0, "failedCount": 0, "pendingCount": 1, "approvalRate": 0 },
+                    { "date": "2026-10-19", "transactionCount": 1, "volume": "150.00", "approvedCount": 1, "rejectedCount": 0, "failedCount": 0, "pendingCount": 0, "approvalRate": 1 }
+                  ],
+                  "generatedAt": "2026-10-19T12:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a44" } } }
+          },
+          "403": {
+            "description": "Rol no permitido. La ruta admite OWNER, OPERATOR o VIEWER.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Acceso denegado: rol no permitido.", "details": null, "requestId": "req_8a45" } } }
+          }
+        }
+      }
+    },
+    "/admin/platform-status": {
+      "get": {
+        "tags": ["Platform Status"],
+        "summary": "Consultar el estado interno de FrogPay",
+        "description": "Requiere rol PLATFORM_ADMIN. La implementación actual informa status ok o degraded, servicios, circuitBreakers y el conteo pending del outbox.",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Estado y dependencias de la plataforma.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlatformStatus" },
+                "example": {
+                  "status": "ok",
+                  "timestamp": "2026-10-19T12:00:00.000Z",
+                  "services": {
+                    "api": { "status": "up", "uptime": 120 },
+                    "database": { "status": "up", "type": "postgresql", "latencyMs": 2 },
+                    "eventBus": { "status": "up", "provider": "rabbitmq" },
+                    "redis": { "status": "up" }
+                  },
+                  "circuitBreakers": [{ "provider": "stripe", "state": "closed", "failures": 0 }],
+                  "outbox": { "pending": 0 }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sesión no autenticada.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a46" } } }
+          },
+          "403": {
+            "description": "Solo PLATFORM_ADMIN está habilitado por el controlador actual.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Se requiere el rol PLATFORM_ADMIN.", "details": null, "requestId": "req_8a47" } } }
+          }
+        }
+      }
+    },
+    "/dashboard/payments": {
+      "get": {
+        "tags": ["Dashboard - Pagos"],
+        "summary": "Listar pagos del tenant de sesión",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "example": 1 },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 25 }, "example": 25 },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "approved", "rejected", "failed", "expired", "refunded", "partially_refunded"] }, "example": "approved" },
+          { "name": "paymentMethod", "in": "query", "schema": { "type": "string" }, "example": "card" },
+          { "name": "environment", "in": "query", "schema": { "type": "string", "enum": ["sandbox", "production"] }, "example": "production" }
+        ],
+        "responses": {
+          "200": { "description": "Página del tenant actual.", "content": { "application/json": { "example": { "data": [{ "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "status": "approved", "amount": "150.00", "currency": "BOB", "paymentMethod": "card", "environment": "production", "merchantReference": "ORDEN-1001" }], "page": 1, "limit": 25, "total": 1, "totalPages": 1 } } } },
+          "401": { "description": "Sesión inválida.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a30" } } } },
+          "403": { "description": "Rol insuficiente.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Se requiere el rol OWNER o ADMIN.", "details": null, "requestId": "req_8a31" } } } }
+        }
+      }
+    },
+    "/dashboard/payments/test": {
+      "post": {
+        "tags": ["Dashboard - Pagos"],
+        "summary": "Crear pago de prueba desde el Dashboard",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "550e8400-e29b-41d4-a716-446655440010" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreatePayment" }, "example": { "amount": "150.00", "currency": "BOB", "paymentMethod": "qr", "merchantReference": "DASHBOARD-1001" } } } },
+        "responses": {
+          "201": { "description": "Pago sandbox creado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Payment" }, "example": { "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "status": "pending", "amount": "150.00", "currency": "BOB", "paymentMethod": "qr", "environment": "sandbox", "merchantReference": "DASHBOARD-1001", "qrPayload": "000201010212..." } } } },
+          "200": { "description": "Reintento idempotente." },
+          "400": { "description": "Datos inválidos.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "validation_error", "message": "Idempotency-Key inválido.", "details": null, "requestId": "req_8a32" } } } }
+        }
+      }
+    },
+    "/dashboard/payments/{id}": {
+      "get": {
+        "tags": ["Dashboard - Pagos"],
+        "summary": "Consultar detalle del pago y entregas de webhooks",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391" }],
+        "responses": {
+          "200": { "description": "Detalle del pago del tenant actual.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentDetails" }, "example": { "id": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "status": "approved", "amount": "150.00", "currency": "BOB", "paymentMethod": "card", "environment": "production", "merchantReference": "ORDEN-1001", "transitions": [{ "from": "pending", "to": "approved", "createdAt": "2026-10-18T12:01:00.000Z", "actor": "webhook" }], "statusHistory": [], "webhookDeliveries": [] } } } },
+          "400": { "description": "ID inválido.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "validation_error", "message": "El ID del pago debe ser un UUID válido.", "details": null, "requestId": "req_8a33" } } } },
+          "404": { "description": "Pago ajeno o inexistente.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "payment_not_found", "message": "El pago solicitado no fue encontrado.", "details": null, "requestId": "req_8a34" } } } }
+        }
+      }
+    },
+    "/dashboard/payments/{id}/simulate-deposit": {
+      "post": {
+        "tags": ["Dashboard - Pagos"],
+        "summary": "Simular depósito de transferencia",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391" }],
+        "requestBody": { "required": true, "content": { "application/json": { "example": { "mode": "exact" } } } },
+        "responses": {
+          "200": { "description": "Depósito simulado.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DepositResult" }, "example": { "status": "reconciled", "depositId": "DEP-DASH-01", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "errorCode": null } } } },
+          "403": { "description": "Solo sandbox y roles autorizados.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Simulación no permitida.", "details": null, "requestId": "req_8a35" } } } }
+        }
+      }
+    },
+    "/dashboard/payments/{id}/simulate": {
+      "post": {
+        "tags": ["Dashboard - Pagos"],
+        "summary": "Simular resultado de pago QR",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391" }],
+        "requestBody": { "required": true, "content": { "application/json": { "example": { "result": "approved" } } } },
+        "responses": {
+          "200": { "description": "Resultado de simulación.", "content": { "application/json": { "example": { "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "status": "approved" } } } },
+          "403": { "description": "Rol o ambiente no permitido.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "forbidden", "message": "Simulación no permitida.", "details": null, "requestId": "req_8a36" } } } }
+        }
+      }
+    },
+    "/dashboard/bank-transactions": {
+      "get": {
+        "tags": ["Dashboard - Otros"],
+        "summary": "Listar transacciones bancarias",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "example": 1 },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 }, "example": 20 },
+          { "name": "status", "in": "query", "schema": { "type": "string" }, "example": "reconciled" }
+        ],
+        "responses": {
+          "200": { "description": "Transacciones del tenant actual.", "content": { "application/json": { "example": { "data": [{ "id": "5d40a2e1-52d5-4e2a-95a8-7f825b161337", "reference": "BT-2026-A81F92", "amount": "150.00", "currency": "BOB", "bankName": "Banco de Prueba", "receivedAt": "2026-10-18T12:00:00.000Z", "status": "reconciled", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "createdAt": "2026-10-18T12:00:00.000Z" }], "pagination": { "total": 1, "page": 1, "limit": 20, "totalPages": 1 } } } },
+          "401": { "description": "Sesión inválida.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "unauthorized", "message": "Se requiere una sesión válida.", "details": null, "requestId": "req_8a37" } } } }
+        }
+      }
+    },
+    "/dashboard/payment-methods": {
+      "get": {
+        "tags": ["Dashboard - Otros"],
+        "summary": "Listar métodos de pago habilitados",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Métodos habilitados.", "content": { "application/json": { "example": [{ "code": "card", "label": "Tarjeta", "processingMode": "synchronous", "requiresPaymentToken": true }, { "code": "qr", "label": "QR", "processingMode": "asynchronous", "requiresPaymentToken": false }] } } }
+        }
+      }
+    },
+    "/dashboard/webhooks": {
+      "post": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Registrar endpoint de webhook",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "example": { "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado", "pago.rechazado"], "environment": "sandbox" } } } },
+        "responses": {
+          "201": { "description": "Endpoint creado; el secreto solo se devuelve ahora.", "content": { "application/json": { "example": { "id": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado", "pago.rechazado"], "isActive": true, "environment": "sandbox", "secret": "whsec_<secreto-unico>", "createdAt": "2026-10-18T12:00:00.000Z", "updatedAt": "2026-10-18T12:00:00.000Z" } } } },
+          "422": { "description": "URL o eventos inválidos.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "validation_error", "message": "URL o eventos no permitidos.", "details": null, "requestId": "req_8a38" } } } }
+        }
+      },
+      "get": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Listar endpoints de webhook",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Endpoints del tenant actual, sin secretos.", "content": { "application/json": { "example": [{ "id": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado"], "isActive": true, "environment": "sandbox", "createdAt": "2026-10-18T12:00:00.000Z", "updatedAt": "2026-10-18T12:00:00.000Z" }] } } }
+        }
+      }
+    },
+    "/dashboard/webhooks/{id}": {
+      "get": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Consultar endpoint webhook",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "cd88e9d8-7eec-4cca-a142-3946e19980ef" }],
+        "responses": {
+          "200": { "description": "Endpoint sin secreto.", "content": { "application/json": { "example": { "id": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado"], "isActive": true, "environment": "sandbox", "createdAt": "2026-10-18T12:00:00.000Z", "updatedAt": "2026-10-18T12:00:00.000Z" } } } },
+          "404": { "description": "Endpoint ajeno o inexistente.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "not_found", "message": "Endpoint no encontrado.", "details": null, "requestId": "req_8a39" } } } }
+        }
+      },
+      "patch": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Actualizar endpoint webhook",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "cd88e9d8-7eec-4cca-a142-3946e19980ef" }],
+        "requestBody": { "required": true, "content": { "application/json": { "example": { "isActive": false } } } },
+        "responses": {
+          "200": { "description": "Endpoint actualizado.", "content": { "application/json": { "example": { "id": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado"], "isActive": false, "environment": "sandbox", "createdAt": "2026-10-18T12:00:00.000Z", "updatedAt": "2026-10-18T12:01:00.000Z" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Eliminar endpoint webhook",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "cd88e9d8-7eec-4cca-a142-3946e19980ef" }],
+        "responses": { "204": { "description": "Endpoint eliminado lógicamente." } }
+      }
+    },
+    "/dashboard/webhooks/{id}/rotate-secret": {
+      "post": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Rotar secreto de firma",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "cd88e9d8-7eec-4cca-a142-3946e19980ef" }],
+        "responses": {
+          "201": { "description": "Nuevo secreto, mostrado una sola vez.", "content": { "application/json": { "example": { "id": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "url": "https://comercio.example/webhooks/frogpay", "eventTypes": ["pago.aprobado"], "isActive": true, "environment": "sandbox", "secret": "whsec_<nuevo-secreto>", "createdAt": "2026-10-18T12:00:00.000Z", "updatedAt": "2026-10-18T12:02:00.000Z" } } } }
+        }
+      }
+    },
+    "/dashboard/webhooks/{id}/test": {
+      "post": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Enviar webhook.prueba",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "cd88e9d8-7eec-4cca-a142-3946e19980ef" }],
+        "responses": {
+          "201": { "description": "Evento de prueba encolado.", "content": { "application/json": { "example": { "deliveryId": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4", "eventType": "webhook.prueba", "status": "pending" } } } }
+        }
+      }
+    },
+    "/dashboard/webhook-deliveries": {
+      "get": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Listar entregas de webhook",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "example": 1 },
+          { "name": "pageSize", "in": "query", "schema": { "type": "integer", "maximum": 100, "default": 20 }, "example": 20 },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending", "delivered", "failed"] }, "example": "failed" }
+        ],
+        "responses": {
+          "200": { "description": "Entregas paginadas del tenant actual.", "content": { "application/json": { "example": { "data": [{ "id": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4", "webhookId": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "eventType": "pago.aprobado", "status": "delivered", "attemptCount": 1, "responseCode": 200, "lastError": null, "nextRetryAt": null, "deliveredAt": "2026-10-18T12:01:00.000Z", "createdAt": "2026-10-18T12:00:00.000Z" }], "total": 1, "page": 1, "pageSize": 20 } } } }
+        }
+      }
+    },
+    "/dashboard/webhook-deliveries/{id}": {
+      "get": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Consultar entrega de webhook",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4" }],
+        "responses": {
+          "200": { "description": "Entrega, payload e lista de intentos.", "content": { "application/json": { "example": { "id": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4", "webhookId": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "eventType": "pago.aprobado", "status": "delivered", "attemptCount": 1, "responseCode": 200, "payload": { "eventName": "pago.aprobado" }, "attempts": [] } } } },
+          "404": { "description": "Entrega ajena o inexistente.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "not_found", "message": "Entrega no encontrada.", "details": null, "requestId": "req_8a40" } } } }
+        }
+      }
+    },
+    "/dashboard/webhook-deliveries/{id}/retry": {
+      "post": {
+        "tags": ["Dashboard - Webhooks"],
+        "summary": "Reintentar entrega fallida",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" }, "example": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4" }],
+        "responses": {
+          "201": { "description": "Reintento encolado.", "content": { "application/json": { "example": { "id": "f7e9fbaa-ef25-4a1e-9e88-c9f55a4bf5c4", "webhookId": "cd88e9d8-7eec-4cca-a142-3946e19980ef", "paymentId": "8a2d8a64-d1ea-4f73-b9fe-64c507ed7391", "eventType": "pago.aprobado", "status": "pending", "attemptCount": 2, "responseCode": null, "lastError": null, "nextRetryAt": null, "deliveredAt": null, "createdAt": "2026-10-18T12:00:00.000Z" } } } },
+          "409": { "description": "Solo se pueden reintentar entregas fallidas.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" }, "example": { "code": "invalid_state_transition", "message": "La entrega no está en estado fallido.", "details": null, "requestId": "req_8a41" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CreatePayment": {
+        "type": "object",
+        "required": ["amount", "currency", "paymentMethod", "merchantReference"],
+        "properties": {
+          "amount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,2})?$", "example": "150.00" },
+          "currency": { "type": "string", "enum": ["BOB"], "example": "BOB" },
+          "paymentMethod": { "type": "string", "enum": ["card", "qr", "bank_transfer"], "example": "card" },
+          "merchantReference": { "type": "string", "maxLength": 255, "example": "ORDEN-1001" },
+          "paymentToken": { "type": "string", "example": "pm_stripe_test_token" }
+        }
+      },
+      "BankInstructions": {
+        "type": "object",
+        "properties": {
+          "bankName": { "type": "string", "example": "Banco FrogPay Simulado" },
+          "accountNumber": { "type": "string", "example": "10000012345" },
+          "accountHolder": { "type": "string", "example": "FrogPay Bolivia" },
+          "amount": { "type": "string", "example": "150.00" },
+          "currency": { "type": "string", "example": "BOB" },
+          "reference": { "type": "string", "example": "BT-2026-A81F92" }
+        }
+      },
+      "Payment": {
+        "type": "object",
+        "required": ["id", "status", "amount", "currency", "paymentMethod", "environment", "merchantReference"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "status": { "type": "string", "enum": ["pending", "approved", "rejected", "failed", "expired", "refunded", "partially_refunded"] },
+          "amount": { "type": "string", "example": "150.00" },
+          "currency": { "type": "string", "example": "BOB" },
+          "paymentMethod": { "type": "string", "example": "card" },
+          "environment": { "type": "string", "enum": ["sandbox", "production"] },
+          "merchantReference": { "type": "string" },
+          "commissionAmount": { "type": "string", "nullable": true, "example": "5.25" },
+          "netAmount": { "type": "string", "nullable": true, "example": "144.75" },
+          "providerTransactionId": { "type": "string", "nullable": true },
+          "errorCode": { "type": "string", "nullable": true, "example": "card_declined" },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "bankInstructions": { "allOf": [{ "$ref": "#/components/schemas/BankInstructions" }], "nullable": true },
+          "qrPayload": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PaymentDetails": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Payment" },
+          {
+            "type": "object",
+            "properties": {
+              "transitions": { "type": "array", "items": { "type": "object", "properties": { "from": { "type": "string", "nullable": true }, "to": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "actor": { "type": "string" } } } },
+              "statusHistory": { "type": "array", "items": { "type": "object", "properties": { "previousStatus": { "type": "string", "nullable": true }, "newStatus": { "type": "string" }, "metadata": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" } } } },
+              "webhookDeliveries": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        ]
+      },
+      "BankDeposit": {
+        "type": "object",
+        "required": ["reference", "amount", "currency", "bankName"],
+        "properties": {
+          "depositId": { "type": "string", "example": "DEP-2026-991823" },
+          "reference": { "type": "string", "example": "BT-2026-A81F92" },
+          "amount": { "type": "string", "example": "150.00" },
+          "currency": { "type": "string", "enum": ["BOB"] },
+          "bankName": { "type": "string", "example": "Banco de Prueba" }
+        }
+      },
+      "DepositResult": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["reconciled", "amount_mismatch", "currency_mismatch", "unmatched"] },
+          "depositId": { "type": "string" },
+          "paymentId": { "type": "string", "format": "uuid", "nullable": true },
+          "errorCode": { "type": "string", "nullable": true }
+        }
+      },
+      "ProviderFault": {
+        "type": "object",
+        "required": ["provider", "mode", "durationSeconds"],
+        "properties": {
+          "provider": { "type": "string", "example": "stripe" },
+          "mode": { "type": "string", "enum": ["error", "latency"] },
+          "durationSeconds": { "type": "integer", "minimum": 1, "maximum": 600, "example": 120 },
+          "latencyMs": { "type": "integer", "minimum": 100, "maximum": 10000, "example": 5000 }
+        }
+      },
+      "AuditLogEntry": {
+        "type": "object",
+        "properties": {
+          "eventId": { "type": "string", "format": "uuid" },
+          "entity": { "type": "string", "example": "payment" },
+          "entityId": { "type": "string", "format": "uuid", "nullable": true },
+          "action": { "type": "string", "example": "pago.aprobado" },
+          "previousState": { "nullable": true, "example": { "status": "pending" } },
+          "newState": { "nullable": true, "example": { "status": "approved" } },
+          "actor": { "type": "object", "additionalProperties": true },
+          "requestId": { "type": "string", "nullable": true },
+          "environment": { "type": "string", "enum": ["sandbox", "production"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuditLogPage": {
+        "type": "object",
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/AuditLogEntry" } },
+          "page": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "total": { "type": "integer" },
+          "totalPages": { "type": "integer" }
+        }
+      },
+      "DashboardMetrics": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string", "format": "date" },
+          "to": { "type": "string", "format": "date" },
+          "environment": { "type": "string", "enum": ["sandbox", "production"] },
+          "currency": { "type": "string", "example": "BOB" },
+          "volume": { "type": "string", "example": "150.00" },
+          "transactionCount": { "type": "integer" },
+          "approvalRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "commissionAmount": { "type": "string", "example": "5.25" },
+          "netAmount": { "type": "string", "example": "144.75" },
+          "byMethod": { "type": "array", "items": { "type": "object", "properties": { "paymentMethod": { "type": "string" }, "transactionCount": { "type": "integer" }, "approvedCount": { "type": "integer" }, "volume": { "type": "string" } } } },
+          "dailySeries": { "type": "array", "items": { "type": "object", "properties": { "date": { "type": "string", "format": "date" }, "transactionCount": { "type": "integer" }, "volume": { "type": "string" }, "approvedCount": { "type": "integer" }, "rejectedCount": { "type": "integer" }, "failedCount": { "type": "integer" }, "pendingCount": { "type": "integer" }, "approvalRate": { "type": "number" } } } },
+          "generatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PlatformStatus": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded"] },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "services": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": true } },
+          "circuitBreakers": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
+          "outbox": { "type": "object", "properties": { "pending": { "type": "integer", "nullable": true } } }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "example": "validation_error" },
+          "message": { "type": "string" },
+          "details": { "nullable": true, "example": null },
+          "requestId": { "type": "string", "example": "req_8a1c" }
+        }
+      }
+    }
+  }
+}

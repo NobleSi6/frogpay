@@ -16,13 +16,29 @@ export class GetCurrentTenantPlanUseCase {
 
   async execute(tenantId: string): Promise<TenantPlanStatus> {
     const period = getCurrentPlanPeriod(this.clock.now());
-    const data = await this.plans.findTenantPlan(tenantId, period);
+    let data = await this.plans.findTenantPlan(tenantId, period);
 
     if (!data?.plan) {
       throw new NotFoundException('El tenant no tiene un plan asignado.');
     }
 
-    return this.toStatus(data.plan, period, data.volumeUsed, data.txCount);
+    if (this.isExpiredPremium(data.plan.name, data.planExpiresAt)) {
+      const downgraded = await this.plans.downgradeTenantToFree(tenantId);
+      if (downgraded) {
+        data = await this.plans.findTenantPlan(tenantId, period);
+        if (!data?.plan) {
+          throw new NotFoundException('El tenant no tiene un plan asignado.');
+        }
+      }
+    }
+
+    return this.toStatus(
+      data.plan,
+      period,
+      data.volumeUsed,
+      data.txCount,
+      data.planExpiresAt,
+    );
   }
 
   toStatus(
@@ -30,6 +46,7 @@ export class GetCurrentTenantPlanUseCase {
     period: string,
     volumeUsedValue: string,
     txCount: number,
+    planExpiresAt: string | null = null,
   ): TenantPlanStatus {
     const volumeUsed = new Prisma.Decimal(volumeUsedValue);
     const monthlyLimit = plan.monthlyVolumeLimit === null
@@ -46,6 +63,13 @@ export class GetCurrentTenantPlanUseCase {
       txCount,
       remaining: remaining?.toFixed(2) ?? null,
       limitReached: monthlyLimit !== null && volumeUsed.greaterThanOrEqualTo(monthlyLimit),
+      planExpiresAt,
     };
+  }
+
+  private isExpiredPremium(planName: string, planExpiresAt: string | null): boolean {
+    if (!planExpiresAt) return false;
+    if (!planName.toLowerCase().includes('premium')) return false;
+    return new Date(planExpiresAt).getTime() <= this.clock.now().getTime();
   }
 }

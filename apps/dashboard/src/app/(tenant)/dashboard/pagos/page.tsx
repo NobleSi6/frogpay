@@ -1,190 +1,130 @@
-'use client';
-
-import { useState } from 'react';
-import Link from 'next/link';
+import Link from "next/link";
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-  CardAction,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CreditCard, Landmark, QrCode, AlertTriangle, Lock } from 'lucide-react';
-import { useAuthSession } from '@/features/auth/auth-session';
+  ArrowRight,
+  ArrowUpRight,
+  CreditCard,
+  FlaskConical,
+  Info,
+  Landmark,
+  Lock,
+  QrCode,
+  ReceiptText,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/shared/page-header";
 
-type PaymentMethodType = 'card' | 'transfer' | 'qr';
+const methods = [
+  {
+    href: "/dashboard/pagos/nuevo",
+    label: "Pago con tarjeta",
+    description: "Prueba el flujo completo con una tarjeta de test de Stripe.",
+    icon: CreditCard,
+    accent:
+      "from-primary-100 to-primary-50 text-primary-700 ring-primary-200/70 dark:from-primary-900/50 dark:to-primary-950/30 dark:text-primary-200 dark:ring-primary-800/60",
+    action: "Pagar con tarjeta",
+  },
+  {
+    href: "/dashboard/pagos/transferencia",
+    label: "Transferencia bancaria",
+    description: "Genera instrucciones de depósito y concilia el pago.",
+    icon: Landmark,
+    accent:
+      "from-secondary-100 to-secondary-50 text-secondary-700 ring-secondary-200/70 dark:from-secondary-900/50 dark:to-secondary-950/30 dark:text-secondary-200 dark:ring-secondary-800/60",
+    action: "Generar transferencia",
+  },
+  {
+    href: "/dashboard/pagos/qr",
+    label: "Pago con QR",
+    description: "Crea un código QR de prueba y sigue su estado en vivo.",
+    icon: QrCode,
+    accent:
+      "from-violet-100 to-violet-50 text-violet-700 ring-violet-200/70 dark:from-violet-900/50 dark:to-violet-950/30 dark:text-violet-200 dark:ring-violet-800/60",
+    action: "Generar QR",
+  },
+];
 
 export default function PagosPage() {
-  const session = useAuthSession();
-  const businessName = session?.user.tenant?.name?.trim() || 'tu negocio';
-  
-  // Estado para controlar el método seleccionado (por defecto 'card')
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('card');
-
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      {/* Header de la sección */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Pagos</h1>
-        <p className="text-sm text-muted-foreground">
-          Prueba tu integración en <span className="font-medium text-foreground">{businessName}</span>
-        </p>
+    <section className="space-y-6">
+      <PageHeader
+        title="Pagos"
+        description="Elige un método para probar tu integración en el ambiente Sandbox."
+        icon={CreditCard}
+        actions={
+          <Button nativeButton={false} render={<Link href="/dashboard/pagos/transacciones" />} variant="outline" className="min-h-10">
+            <ReceiptText aria-hidden />
+            Ver transacciones
+          </Button>
+        }
+      />
+
+      <div className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-warning/[0.07] p-4 text-warning">
+        <FlaskConical aria-hidden className="mt-0.5 size-5 shrink-0" />
+        <div className="min-w-0 flex-1 text-sm">
+          <p className="font-semibold">Estás en modo Sandbox</p>
+          <p className="text-warning/85">
+            Los pagos de esta sección son simulados. No se cobrará dinero real.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/configuracion/proveedores"
+          className="hidden shrink-0 items-center gap-1 text-xs font-medium underline-offset-4 hover:underline sm:inline-flex"
+        >
+          Configurar proveedores
+          <ArrowUpRight aria-hidden className="size-3.5" />
+        </Link>
       </div>
 
-      {/* Contenedor Principal */}
-      <Card className="shadow-lg border-border">
-        <CardHeader>
-          <CardTitle className="text-xl">Elige un método de pago</CardTitle>
-          <CardDescription>
-            Selecciona cómo quieres realizar tu nuevo pago de prueba en {businessName}.
-          </CardDescription>
-          <CardAction>
-            <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-              Modo Sandbox
+      <div className="grid gap-4 md:grid-cols-3">
+        {methods.map(({ href, label, description, icon: Icon, accent, action }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border bg-card p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_-32px_rgba(15,23,42,0.45)] ring-1 ring-foreground/[0.06] transition-all duration-300 hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_54px_-30px_rgba(5,150,105,0.4)] focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -right-10 -top-12 size-32 rounded-full bg-primary-200/20 blur-2xl transition-opacity duration-300 group-hover:opacity-100 dark:bg-primary-700/10"
+            />
+            <div className="relative space-y-3">
+              <span className={`flex size-11 items-center justify-center rounded-xl bg-gradient-to-br ring-1 ${accent}`}>
+                <Icon aria-hidden className="size-5" />
+              </span>
+              <div className="space-y-1">
+                <h2 className="font-semibold tracking-tight">{label}</h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+              </div>
+            </div>
+            <span className="relative mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 dark:text-primary-300">
+              {action}
+              <ArrowRight
+                aria-hidden
+                className="size-4 transition-transform duration-200 group-hover:translate-x-0.5"
+              />
             </span>
-          </CardAction>
+          </Link>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Info aria-hidden className="size-4 text-primary-600" />
+            Antes de empezar
+          </CardTitle>
         </CardHeader>
-
-        <CardContent className="space-y-6">
-          {/* Banner Advertencia Sandbox */}
-          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="font-semibold">Los pagos no son reales</p>
-              <p className="text-amber-700 dark:text-amber-300">
-                Estás en un ambiente Sandbox. Esta página es solo para pruebas.
-              </p>
-            </div>
-          </div>
-
-          {/* Opciones de Métodos de Pago */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            
-            {/* Opción 1: Tarjeta */}
-            <div
-              onClick={() => setSelectedMethod('card')}
-              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
-                selectedMethod === 'card'
-                  ? 'border-emerald-500 bg-emerald-50/10'
-                  : 'border-border bg-card opacity-80 hover:opacity-100'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                  selectedMethod === 'card'
-                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-base text-foreground">Pago con tarjeta</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Continúa al formulario de pago con una tarjeta de prueba.
-                  </p>
-                </div>
-              </div>
-              <Link href="/dashboard/pagos/nuevo" className="w-full mt-6">
-                <Button 
-                  className={`w-full font-medium ${
-                    selectedMethod === 'card'
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                      : 'variant-outline'
-                  }`}
-                  variant={selectedMethod === 'card' ? 'default' : 'outline'}
-                >
-                  Tarjeta
-                </Button>
-              </Link>
-            </div>
-
-            {/* Opción 2: Transferencia Bancaria */}
-            <div
-              onClick={() => setSelectedMethod('transfer')}
-              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
-                selectedMethod === 'transfer'
-                  ? 'border-emerald-500 bg-emerald-50/10'
-                  : 'border-border bg-card opacity-80 hover:opacity-100'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                  selectedMethod === 'transfer'
-                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  <Landmark className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-base text-foreground">Transferencia bancaria</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Elige una transferencia bancaria como método de pago.
-                  </p>
-                </div>
-              </div>
-              <Link href="/dashboard/pagos/transferencia" className="w-full mt-6">
-                <Button 
-                  className={`w-full font-medium ${
-                    selectedMethod === 'transfer'
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                      : ''
-                  }`}
-                  variant={selectedMethod === 'transfer' ? 'default' : 'outline'}
-                >
-                  Transferencia
-                </Button>
-              </Link>
-            </div>
-
-            {/* Opción 3: Pago con QR */}
-            <div
-              onClick={() => setSelectedMethod('qr')}
-              className={`cursor-pointer rounded-xl border-2 p-5 flex flex-col justify-between transition-all shadow-sm hover:shadow-md ${
-                selectedMethod === 'qr'
-                  ? 'border-emerald-500 bg-emerald-50/10'
-                  : 'border-border bg-card opacity-80 hover:opacity-100'
-              }`}
-            >
-              <div className="space-y-3">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                  selectedMethod === 'qr'
-                    ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                    : 'bg-muted text-muted-foreground'
-                }`}>
-                  <QrCode className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-base text-foreground">Pago con QR</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Genera un código QR para probar un pago en Sandbox.
-                  </p>
-                </div>
-              </div>
-              <Link href="/dashboard/pagos/qr" className="w-full mt-6">
-                <Button 
-                  className={`w-full font-medium ${
-                    selectedMethod === 'qr'
-                      ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                      : ''
-                  }`}
-                  variant={selectedMethod === 'qr' ? 'default' : 'outline'}
-                >
-                  Generar pago con QR
-                </Button>
-              </Link>
-            </div>
-
-          </div>
+        <CardContent className="grid gap-4 text-sm text-muted-foreground sm:grid-cols-3">
+          <p>Configura tus credenciales de proveedor en Configuración → Proveedores.</p>
+          <p>Usa tarjetas de prueba de Stripe para simular pagos aprobados o rechazados.</p>
+          <p>Los webhooks se envían a todos los endpoints suscritos al evento.</p>
         </CardContent>
-
-        <CardFooter className="justify-center text-xs text-muted-foreground gap-1.5 border-t pt-4">
-          <Lock className="h-3.5 w-3.5" />
-          Solo para pruebas · Ambiente Sandbox
-        </CardFooter>
       </Card>
-    </div>
+
+      <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+        <Lock aria-hidden className="size-3.5" />
+        Solo para pruebas · Ambiente Sandbox
+      </p>
+    </section>
   );
 }

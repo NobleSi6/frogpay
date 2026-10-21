@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaTenantContextService, TenantTx } from '../../../../shared/database/prisma-tenant-context.service';
+import {
+  PrismaTenantContextService,
+  TenantTx,
+} from '../../../../shared/database/prisma-tenant-context.service';
 import { ApiKey } from '../../domain/entities/api-key.entity';
 import { Tenant } from '../../domain/entities/tenant.entity';
 import { User } from '../../domain/entities/user.entity';
@@ -23,6 +26,8 @@ const planNames: Record<Tenant['plan'], string> = {
 const roleNames: Record<UserRole, string> = {
   PLATFORM_ADMIN: 'platform_admin',
   OWNER: 'tenant_owner',
+  OPERATOR: 'tenant_operator',
+  VIEWER: 'tenant_viewer',
   ADMIN: 'tenant_admin',
   DEVELOPER: 'tenant_developer',
   FINANCE: 'tenant_finance',
@@ -35,19 +40,25 @@ export class PrismaTenantRegistrationRepository implements TenantRegistrationRep
 
   save(tenant: Tenant, owner: User, apiKeys: ApiKey[], event: TenantCreatedEvent): Promise<void> {
     return this.context.withGlobalAccess(async (tx) => {
-      const plan = await tx.plan.findUnique({ where: { name: planNames[tenant.plan] } });
+      const plan = await tx.plan.findUnique({
+        where: { name: planNames[tenant.plan] },
+      });
       if (!plan) throw new Error(`No existe el plan ${planNames[tenant.plan]} en el catálogo.`);
 
-      const role = await tx.role.findUnique({ where: { name: roleNames[owner.role] } });
+      const role = await tx.role.findUnique({
+        where: { name: roleNames[owner.role] },
+      });
       if (!role) throw new Error(`No existe el rol ${roleNames[owner.role]} en el catálogo.`);
 
-      const eventEnvelope = JSON.parse(JSON.stringify({
-        eventId: event.eventId,
-        occurredOn: event.occurredOn.toISOString(),
-        eventName: event.eventName,
-        aggregateId: event.aggregateId,
-        payload: event.payload,
-      })) as Prisma.InputJsonValue;
+      const eventEnvelope = JSON.parse(
+        JSON.stringify({
+          eventId: event.eventId,
+          occurredOn: event.occurredOn.toISOString(),
+          eventName: event.eventName,
+          aggregateId: event.aggregateId,
+          payload: event.payload,
+        }),
+      ) as Prisma.InputJsonValue;
 
       await tx.tenant.create({
         data: {
@@ -102,7 +113,10 @@ export class PrismaTenantRepository implements ITenantRepository {
 
   findById(id: string): Promise<Tenant | null> {
     return this.context.withGlobalAccess(async (tx) => {
-      const row = await tx.tenant.findUnique({ where: { id }, include: { plan: true } });
+      const row = await tx.tenant.findUnique({
+        where: { id },
+        include: { plan: true },
+      });
       return row ? tenantFromRow(row) : null;
     });
   }
@@ -127,7 +141,9 @@ export class PrismaTenantRepository implements ITenantRepository {
     });
   }
 
-  listAll(): Promise<import('../../domain/repositories/tenant.repository.interface').TenantListRecord[]> {
+  listAll(): Promise<
+    import('../../domain/repositories/tenant.repository.interface').TenantListRecord[]
+  > {
     return this.context.withGlobalAccess(async (tx) => {
       const rows = await tx.tenant.findMany({
         include: {
@@ -152,7 +168,9 @@ export class PrismaTenantRepository implements ITenantRepository {
 
   save(tenant: Tenant): Promise<void> {
     return this.context.withGlobalAccess(async (tx) => {
-      const plan = await tx.plan.findUnique({ where: { name: planNames[tenant.plan] } });
+      const plan = await tx.plan.findUnique({
+        where: { name: planNames[tenant.plan] },
+      });
       if (!plan) throw new Error(`No existe el plan ${planNames[tenant.plan]} en el catálogo.`);
       const data = {
         name: tenant.name,
@@ -165,7 +183,11 @@ export class PrismaTenantRepository implements ITenantRepository {
         metadata: (tenant.metadata ?? {}) as Prisma.InputJsonValue,
         updated_at: tenant.updatedAt,
       };
-      await tx.tenant.upsert({ where: { id: tenant.id }, create: { id: tenant.id, ...data }, update: data });
+      await tx.tenant.upsert({
+        where: { id: tenant.id },
+        create: { id: tenant.id, ...data },
+        update: data,
+      });
     });
   }
 }
@@ -176,7 +198,10 @@ export class PrismaUserRepository implements IUserRepository {
 
   findById(id: string): Promise<User | null> {
     return this.context.withGlobalAccess(async (tx) => {
-      const row = await tx.app_user.findUnique({ where: { id }, include: { role: true } });
+      const row = await tx.app_user.findUnique({
+        where: { id },
+        include: { role: true },
+      });
       return row ? userFromRow(row) : null;
     });
   }
@@ -184,7 +209,9 @@ export class PrismaUserRepository implements IUserRepository {
   findByEmail(email: string): Promise<User | null> {
     return this.context.withGlobalAccess(async (tx) => {
       const row = await tx.app_user.findFirst({
-        where: { email: { equals: email.trim().toLowerCase(), mode: 'insensitive' } },
+        where: {
+          email: { equals: email.trim().toLowerCase(), mode: 'insensitive' },
+        },
         include: { role: true },
       });
       return row ? userFromRow(row) : null;
@@ -201,9 +228,35 @@ export class PrismaUserRepository implements IUserRepository {
     });
   }
 
+  findByTenantEmail(tenantId: string, email: string): Promise<User | null> {
+    return this.context.withTenant(tenantId, async (tx) => {
+      const row = await tx.app_user.findFirst({
+        where: {
+          tenant_id: tenantId,
+          email: { equals: email.trim().toLowerCase(), mode: 'insensitive' },
+        },
+        include: { role: true },
+      });
+      return row ? userFromRow(row) : null;
+    });
+  }
+
+  listByTenant(tenantId: string): Promise<User[]> {
+    return this.context.withTenant(tenantId, async (tx) => {
+      const rows = await tx.app_user.findMany({
+        where: { tenant_id: tenantId },
+        include: { role: true },
+        orderBy: { created_at: 'asc' },
+      });
+      return rows.map(userFromRow);
+    });
+  }
+
   save(user: User): Promise<void> {
     return this.context.withGlobalAccess(async (tx) => {
-      const role = await tx.role.findUnique({ where: { name: roleNames[user.role] } });
+      const role = await tx.role.findUnique({
+        where: { name: roleNames[user.role] },
+      });
       if (!role) throw new Error(`No existe el rol ${roleNames[user.role]} en el catálogo.`);
       const data = {
         tenant_id: user.tenantId,
@@ -216,7 +269,11 @@ export class PrismaUserRepository implements IUserRepository {
         password_hash: user.passwordHash ?? null,
         updated_at: user.updatedAt,
       };
-      await tx.app_user.upsert({ where: { id: user.id }, create: { id: user.id, ...data }, update: data });
+      await tx.app_user.upsert({
+        where: { id: user.id },
+        create: { id: user.id, ...data },
+        update: data,
+      });
     });
   }
 }
@@ -234,14 +291,19 @@ export class PrismaApiKeyRepository implements IApiKeyRepository {
 
   findByTenantId(tenantId: string): Promise<ApiKey[]> {
     return this.context.withTenant(tenantId, async (tx) => {
-      const rows = await tx.api_key.findMany({ where: { tenant_id: tenantId }, orderBy: { created_at: 'asc' } });
+      const rows = await tx.api_key.findMany({
+        where: { tenant_id: tenantId },
+        orderBy: { created_at: 'asc' },
+      });
       return rows.map(apiKeyFromRow);
     });
   }
 
   findByKeyHash(keyHash: string): Promise<ApiKey | null> {
     return this.context.withGlobalAccess(async (tx) => {
-      const row = await tx.api_key.findFirst({ where: { secret_hash: keyHash, status: 'active' } });
+      const row = await tx.api_key.findFirst({
+        where: { secret_hash: keyHash, status: 'active' },
+      });
       return row ? apiKeyFromRow(row) : null;
     });
   }
@@ -264,7 +326,11 @@ export class PrismaApiKeyRepository implements IApiKeyRepository {
 
 function saveApiKey(tx: TenantTx, apiKey: ApiKey): Promise<unknown> {
   const data = apiKeyCreateData(apiKey);
-  return tx.api_key.upsert({ where: { id: apiKey.id }, create: { id: apiKey.id, ...data }, update: data });
+  return tx.api_key.upsert({
+    where: { id: apiKey.id },
+    create: { id: apiKey.id, ...data },
+    update: data,
+  });
 }
 
 function apiKeyCreateData(apiKey: ApiKey) {
@@ -285,42 +351,60 @@ function apiKeyCreateData(apiKey: ApiKey) {
 
 function tenantFromRow(row: TenantWithPlan): Tenant {
   if (!row.contact_email) throw new Error(`El tenant ${row.id} no tiene correo de contacto.`);
-  return Tenant.reconstitute({
-    name: row.business_name || row.name,
-    taxId: row.tax_id,
-    contactEmail: row.contact_email,
-    status: tenantStatusFromRow(row.status),
-    plan: tenantPlanFromRow(row.plan?.name),
-    webhookUrl: row.webhook_url ?? undefined,
-    metadata: row.metadata !== null && typeof row.metadata === 'object' && !Array.isArray(row.metadata) ? row.metadata as Record<string, unknown> : {},
-  }, row.id, row.created_at, row.updated_at);
+  return Tenant.reconstitute(
+    {
+      name: row.business_name || row.name,
+      taxId: row.tax_id,
+      contactEmail: row.contact_email,
+      status: tenantStatusFromRow(row.status),
+      plan: tenantPlanFromRow(row.plan?.name),
+      webhookUrl: row.webhook_url ?? undefined,
+      metadata:
+        row.metadata !== null && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
+          ? (row.metadata as Record<string, unknown>)
+          : {},
+    },
+    row.id,
+    row.created_at,
+    row.updated_at,
+  );
 }
 
 function userFromRow(row: UserWithRole): User {
-  return User.reconstitute({
-    tenantId: row.tenant_id ?? undefined,
-    email: row.email,
-    name: row.name ?? undefined,
-    role: userRoleFromRow(row.role.name),
-    status: userStatusFromRow(row.status),
-    invitationTokenHash: row.invitation_token ?? undefined,
-    invitationExpiresAt: row.invitation_expires_at ?? undefined,
-    passwordHash: row.password_hash ?? undefined,
-  }, row.id, row.created_at, row.updated_at);
+  return User.reconstitute(
+    {
+      tenantId: row.tenant_id ?? undefined,
+      email: row.email,
+      name: row.name ?? undefined,
+      role: userRoleFromRow(row.role.name),
+      status: userStatusFromRow(row.status),
+      invitationTokenHash: row.invitation_token ?? undefined,
+      invitationExpiresAt: row.invitation_expires_at ?? undefined,
+      passwordHash: row.password_hash ?? undefined,
+    },
+    row.id,
+    row.created_at,
+    row.updated_at,
+  );
 }
 
 function apiKeyFromRow(row: ApiKeyRow): ApiKey {
-  return ApiKey.reconstitute({
-    tenantId: row.tenant_id,
-    name: row.name ?? '',
-    type: apiKeyTypeFromRow(row.environment),
-    keyPrefix: row.key_prefix,
-    keyHash: row.secret_hash,
-    maskedKey: row.masked_key,
-    isActive: row.status === 'active',
-    expiresAt: row.expires_at ?? undefined,
-    lastUsedAt: row.last_used_at ?? undefined,
-  }, row.id, row.created_at, row.updated_at);
+  return ApiKey.reconstitute(
+    {
+      tenantId: row.tenant_id,
+      name: row.name ?? '',
+      type: apiKeyTypeFromRow(row.environment),
+      keyPrefix: row.key_prefix,
+      keyHash: row.secret_hash,
+      maskedKey: row.masked_key,
+      isActive: row.status === 'active',
+      expiresAt: row.expires_at ?? undefined,
+      lastUsedAt: row.last_used_at ?? undefined,
+    },
+    row.id,
+    row.created_at,
+    row.updated_at,
+  );
 }
 
 function tenantPlanFromRow(name: string | undefined): Tenant['plan'] {
@@ -348,6 +432,8 @@ function userRoleFromRow(name: string): UserRole {
   const roles: Record<string, UserRole> = {
     platform_admin: 'PLATFORM_ADMIN',
     tenant_owner: 'OWNER',
+    tenant_operator: 'OPERATOR',
+    tenant_viewer: 'VIEWER',
     tenant_admin: 'ADMIN',
     tenant_developer: 'DEVELOPER',
     tenant_finance: 'FINANCE',
